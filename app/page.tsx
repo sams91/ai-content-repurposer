@@ -1,23 +1,25 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Sparkles, ArrowRight, CheckCircle, RefreshCw, LogOut, Clock, Upload, Copy, RotateCw, Share2 } from 'lucide-react';
+import { Sparkles, ArrowRight, CheckCircle, RefreshCw, LogOut, Clock, Upload, Copy, RotateCw, Share2, Video } from 'lucide-react';
 import { supabase } from './supabase';
+import VideoRecorder from '@/components/VideoRecorder';
 
 export default function Home() {
-  const [content, setContent] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  const [content, setContent] = useState<string>('');
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [result, setResult] = useState<Record<string, any> | null>(null);
   const [user, setUser] = useState<any>(null);
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [isAuthLoading, setIsAuthLoading] = useState(false);
+  const [email, setEmail] = useState<string>('');
+  const [password, setPassword] = useState<string>('');
+  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(false);
   const [history, setHistory] = useState<any[]>([]);
-  const [showHistory, setShowHistory] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
-  const [isCopyingAll, setIsCopyingAll] = useState(false);
+  const [showHistory, setShowHistory] = useState<boolean>(false);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [isCopyingAll, setIsCopyingAll] = useState<boolean>(false);
   const [shareLink, setShareLink] = useState<string | null>(null);
+  const [activeMode, setActiveMode] = useState<'text' | 'video'>('text');
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -56,7 +58,7 @@ export default function Home() {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) alert(error.message);
       }
-    } catch (err) {
+    } catch {
       alert("Something went wrong");
     }
     setIsAuthLoading(false);
@@ -110,10 +112,8 @@ export default function Home() {
         });
 
       loadHistory();
-
-    } catch (error) {
+    } catch {
       showToast("Failed to generate content.", true);
-      console.error(error);
     } finally {
       setIsProcessing(false);
     }
@@ -148,10 +148,8 @@ export default function Home() {
         });
 
       loadHistory();
-
-    } catch (error) {
+    } catch {
       showToast("Failed to process file.", true);
-      console.error(error);
     } finally {
       setIsProcessing(false);
     }
@@ -169,7 +167,7 @@ export default function Home() {
     try {
       await navigator.clipboard.writeText(safeText.trim());
       showToast(`✅ Copied ${label}!`);
-    } catch (err) {
+    } catch {
       showToast("Failed to copy. Please try again.", true);
     }
   };
@@ -189,7 +187,7 @@ export default function Home() {
     try {
       await navigator.clipboard.writeText(allText.trim());
       showToast("✅ Copied all platforms to clipboard!");
-    } catch (err) {
+    } catch {
       showToast("Failed to copy. Please try again.", true);
     }
     
@@ -199,22 +197,24 @@ export default function Home() {
   const generateShareLink = async () => {
     if (!result || !user) return;
 
-    const { data, error } = await supabase
-      .from('shared_content')
-      .insert({
-        user_id: user.id,
-        outputs: result,
-        original_content: content
-      })
-      .select('id')
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('shared_content')
+        .insert({
+          user_id: user.id,
+          outputs: result,
+          original_content: content
+        })
+        .select('id')
+        .single();
 
-    if (data) {
+      if (error) throw error;
+
       const link = `${window.location.origin}/share/${data.id}`;
       setShareLink(link);
       await navigator.clipboard.writeText(link);
       showToast("✅ Share link copied to clipboard!");
-    } else {
+    } catch {
       showToast("Failed to create share link.", true);
     }
   };
@@ -240,7 +240,7 @@ export default function Home() {
         [platform]: data.outputs[platform]
       }));
 
-    } catch (error) {
+    } catch {
       showToast("Failed to regenerate.", true);
     } finally {
       setIsProcessing(false);
@@ -249,8 +249,9 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white relative overflow-hidden">
-      {/* Star field background */}
-      <div className="fixed inset-0 bg-cover bg-center bg-no-repeat pointer-events-none" style={{ backgroundImage: "url('/space-bg.jpg')" }} />
+      {/* Background */}
+      <div className="fixed inset-0 bg-cover bg-center bg-no-repeat pointer-events-none" 
+           style={{ backgroundImage: "url('/space-bg.jpg')" }} />
       <div className="fixed inset-0 bg-black/70 pointer-events-none" />
 
       <nav className="border-b border-white/10 bg-zinc-950/95 backdrop-blur-md sticky top-0 z-50">
@@ -264,18 +265,24 @@ export default function Home() {
           </div>
 
           {user && (
-            <div className="flex items-center gap-6">
-              <button onClick={() => window.location.href = '/why-amplify'} className="flex items-center gap-2 text-sm hover:text-violet-400 transition">
+            <div className="flex items-center gap-6 text-sm">
+              <button 
+                onClick={() => window.location.href = '/'} 
+                className="hover:text-violet-400 transition"
+              >
+                Home
+              </button>
+              <button onClick={() => window.location.href = '/why-amplify'} className="hover:text-violet-400 transition">
                 Why Amplify
               </button>
-              <button onClick={() => window.location.href = '/pricing'} className="flex items-center gap-2 text-sm hover:text-violet-400 transition">
+              <button onClick={() => window.location.href = '/pricing'} className="hover:text-violet-400 transition">
                 Pricing
               </button>
-              <button onClick={() => setShowHistory(!showHistory)} className="flex items-center gap-2 text-sm hover:text-violet-400 transition">
+              <button onClick={() => setShowHistory(!showHistory)} className="flex items-center gap-2 hover:text-violet-400 transition">
                 <Clock className="w-4 h-4" /> History
               </button>
-              <span className="text-sm text-zinc-400">{user.email}</span>
-              <button onClick={handleSignOut} className="flex items-center gap-2 text-sm text-zinc-400 hover:text-white transition">
+              <span className="text-zinc-400">{user.email}</span>
+              <button onClick={handleSignOut} className="flex items-center gap-2 text-zinc-400 hover:text-white transition">
                 <LogOut className="w-4 h-4" /> Sign out
               </button>
             </div>
@@ -331,160 +338,161 @@ export default function Home() {
                 <p className="text-xl text-zinc-400">Amplify your reach across the digital universe</p>
               </div>
 
-              {/* How it Works */}
-              <div className="max-w-3xl mx-auto mb-16 bg-zinc-900/90 border border-white/10 rounded-3xl p-8 backdrop-blur-sm">
-                <h3 className="text-xl font-semibold mb-8 text-center">How ContentAmplifier Works</h3>
-                <div className="grid md:grid-cols-3 gap-8 text-center">
-                  <div>
-                    <div className="w-12 h-12 mx-auto mb-4 bg-violet-500/10 rounded-2xl flex items-center justify-center">
-                      <span className="text-2xl">1️⃣</span>
-                    </div>
-                    <p className="font-medium mb-2">Share Your Content</p>
-                    <p className="text-sm text-zinc-400">Paste text or upload a DOCX or TXT file</p>
-                  </div>
-                  <div>
-                    <div className="w-12 h-12 mx-auto mb-4 bg-violet-500/10 rounded-2xl flex items-center justify-center">
-                      <span className="text-2xl">2️⃣</span>
-                    </div>
-                    <p className="font-medium mb-2">AI Does the Heavy Lifting</p>
-                    <p className="text-sm text-zinc-400">We instantly optimize it for search and 8 major platforms</p>
-                  </div>
-                  <div>
-                    <div className="w-12 h-12 mx-auto mb-4 bg-violet-500/10 rounded-2xl flex items-center justify-center">
-                      <span className="text-2xl">3️⃣</span>
-                    </div>
-                    <p className="font-medium mb-2">Get Ready-to-Use Versions</p>
-                    <p className="text-sm text-zinc-400">Copy and post across all platforms in seconds</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="max-w-3xl mx-auto">
-                <div 
-                  className={`border-2 border-dashed border-violet-500/30 rounded-3xl p-12 text-center transition-all ${isDragging ? 'border-violet-500 bg-violet-500/10' : 'border-white/20'}`}
-                  onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                  onDragLeave={() => setIsDragging(false)}
-                  onDrop={handleDrop}
-                >
-                  <Upload className="w-12 h-12 mx-auto mb-4 text-violet-400" />
-                  <p className="text-lg mb-2">Drop a DOCX or TXT file here</p>
-                  <p className="text-sm text-zinc-500 mb-6">or paste text below</p>
-
-                  <input 
-                    type="file" 
-                    accept=".docx,.txt" 
-                    onChange={(e) => e.target.files && handleFileUpload(e.target.files[0])} 
-                    className="hidden" 
-                    id="file-upload" 
-                  />
-                  <label 
-                    htmlFor="file-upload" 
-                    className="cursor-pointer inline-block bg-zinc-900 hover:bg-zinc-800 border border-violet-500/50 px-6 py-3 rounded-2xl text-sm transition"
+              {/* Mode Tabs */}
+              <div className="flex justify-center mb-8">
+                <div className="inline-flex bg-zinc-900 border border-white/10 rounded-3xl p-1">
+                  <button
+                    onClick={() => setActiveMode('text')}
+                    className={`px-8 py-3 rounded-3xl flex items-center gap-2 transition-all ${activeMode === 'text' ? 'bg-white text-black font-medium' : 'hover:bg-white/10'}`}
                   >
-                    Select File
-                  </label>
-                </div>
-
-                <div className="mt-6 bg-zinc-900/90 border border-white/10 rounded-3xl p-8">
-                  <div className="flex justify-between text-sm text-zinc-500 mb-2">
-                    <span>Input Content</span>
-                    <span>{content.length} characters</span>
-                  </div>
-                  <textarea 
-                    value={content} 
-                    onChange={(e) => setContent(e.target.value)} 
-                    placeholder="Or paste your content here..." 
-                    className="w-full h-48 bg-zinc-950 border border-white/10 rounded-2xl p-6 text-lg placeholder-zinc-500 focus:outline-none focus:border-violet-500 resize-none" 
-                  />
-
-                  <button 
-                    onClick={() => handleRepurpose()} 
-                    disabled={isProcessing || !content.trim()} 
-                    className="mt-6 w-full bg-gradient-to-r from-violet-600 via-fuchsia-600 to-violet-600 hover:brightness-110 disabled:bg-zinc-700 py-4 rounded-2xl font-semibold flex items-center justify-center gap-3 text-lg transition-all duration-300 shadow-lg shadow-violet-500/30"
+                    📝 Text Mode
+                  </button>
+                  <button
+                    onClick={() => setActiveMode('video')}
+                    className={`px-8 py-3 rounded-3xl flex items-center gap-2 transition-all ${activeMode === 'video' ? 'bg-white text-black font-medium' : 'hover:bg-white/10'}`}
                   >
-                    {isProcessing ? (
-                      <>Amplifying Across the Universe <RefreshCw className="w-5 h-5 animate-spin" /></>
-                    ) : (
-                      <>Amplify Content <ArrowRight className="w-5 h-5" /></>
-                    )}
+                    <Video className="w-5 h-5" /> Video Mode
                   </button>
                 </div>
-
-                {result && (
-                  <div className="mt-12">
-                    <div className="flex justify-between items-center mb-8">
-                      <h3 className="text-2xl font-semibold flex items-center gap-3">
-                        <CheckCircle className="text-emerald-500" /> Amplified Content
-                      </h3>
-                      <div className="flex gap-3">
-                        <button 
-                          onClick={copyAll} 
-                          disabled={isCopyingAll} 
-                          className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 px-5 py-2 rounded-2xl text-sm transition"
-                        >
-                          <Copy className="w-4 h-4" /> {isCopyingAll ? "Copying..." : "Copy All"}
-                        </button>
-                        <button 
-                          onClick={generateShareLink} 
-                          className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 px-5 py-2 rounded-2xl text-sm transition"
-                        >
-                          <Share2 className="w-4 h-4" /> Share
-                        </button>
-                      </div>
-                    </div>
-                    
-                    {shareLink && (
-                      <div className="mb-8 p-4 bg-zinc-900 border border-violet-500/30 rounded-2xl text-sm">
-                        Share Link: <span className="text-violet-400 font-mono break-all">{shareLink}</span>
-                      </div>
-                    )}
-
-                    <div className="grid md:grid-cols-2 gap-6">
-                      {Object.entries(result).map(([platform, text]) => {
-                        const isX = platform === 'twitter';
-                        const displayName = platform === 'twitter' ? 'X' : platform.charAt(0).toUpperCase() + platform.slice(1);
-                        const safeText = typeof text === 'string' ? text : JSON.stringify(text, null, 2);
-
-                        return (
-                          <div key={platform} className="bg-zinc-900 border border-white/10 rounded-2xl p-6 group relative hover:border-violet-400/50 transition-all">
-                            <div className="flex items-center justify-between mb-4">
-                              <div className="flex items-center gap-3">
-                                {isX && (
-                                  <div className="w-6 h-6 bg-white rounded flex items-center justify-center">
-                                    <span className="text-black font-black text-2xl leading-none">𝕏</span>
-                                  </div>
-                                )}
-                                <p className="uppercase text-sm text-violet-400 tracking-widest font-medium">
-                                  {displayName}
-                                </p>
-                              </div>
-                              <div className="flex gap-2">
-                                <button 
-                                  onClick={() => regeneratePlatform(platform)} 
-                                  className="opacity-0 group-hover:opacity-100 transition text-xs px-3 py-1 rounded-full hover:bg-zinc-800 flex items-center gap-1"
-                                >
-                                  <RotateCw className="w-3 h-3" /> Regenerate
-                                </button>
-                                <button 
-                                  onClick={() => copyToClipboard(text, displayName)} 
-                                  className="opacity-0 group-hover:opacity-100 transition bg-zinc-800 hover:bg-zinc-700 text-xs px-4 py-1.5 rounded-full flex items-center gap-1.5"
-                                >
-                                  📋 Copy
-                                </button>
-                              </div>
-                            </div>
-                            <p className="text-zinc-300 text-sm leading-relaxed whitespace-pre-wrap">
-                              {safeText}
-                            </p>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
               </div>
+
+              {/* Text Mode */}
+              {activeMode === 'text' && (
+                <div className="max-w-3xl mx-auto">
+                  <div 
+                    className={`border-2 border-dashed border-violet-500/30 rounded-3xl p-12 text-center transition-all ${isDragging ? 'border-violet-500 bg-violet-500/10' : 'border-white/20'}`}
+                    onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                    onDragLeave={() => setIsDragging(false)}
+                    onDrop={handleDrop}
+                  >
+                    <Upload className="w-12 h-12 mx-auto mb-4 text-violet-400" />
+                    <p className="text-lg mb-2">Drop a DOCX or TXT file here</p>
+                    <p className="text-sm text-zinc-500 mb-6">or paste text below</p>
+
+                    <input 
+                      type="file" 
+                      accept=".docx,.txt" 
+                      onChange={(e) => e.target.files && handleFileUpload(e.target.files[0])} 
+                      className="hidden" 
+                      id="file-upload" 
+                    />
+                    <label 
+                      htmlFor="file-upload" 
+                      className="cursor-pointer inline-block bg-zinc-900 hover:bg-zinc-800 border border-violet-500/50 px-6 py-3 rounded-2xl text-sm transition"
+                    >
+                      Select File
+                    </label>
+                  </div>
+
+                  <div className="mt-6 bg-zinc-900/90 border border-white/10 rounded-3xl p-8">
+                    <div className="flex justify-between text-sm text-zinc-500 mb-2">
+                      <span>Input Content</span>
+                      <span>{content.length} characters</span>
+                    </div>
+                    <textarea 
+                      value={content} 
+                      onChange={(e) => setContent(e.target.value)} 
+                      placeholder="Or paste your content here..." 
+                      className="w-full h-48 bg-zinc-950 border border-white/10 rounded-2xl p-6 text-lg placeholder-zinc-500 focus:outline-none focus:border-violet-500 resize-none" 
+                    />
+
+                    <button 
+                      onClick={() => handleRepurpose()} 
+                      disabled={isProcessing || !content.trim()} 
+                      className="mt-6 w-full bg-gradient-to-r from-violet-600 via-fuchsia-600 to-violet-600 hover:brightness-110 disabled:bg-zinc-700 py-4 rounded-2xl font-semibold flex items-center justify-center gap-3 text-lg transition-all duration-300 shadow-lg shadow-violet-500/30"
+                    >
+                      {isProcessing ? (
+                        <>Amplifying Across the Universe <RefreshCw className="w-5 h-5 animate-spin" /></>
+                      ) : (
+                        <>Amplify Content <ArrowRight className="w-5 h-5" /></>
+                      )}
+                    </button>
+                  </div>
+
+                  {result && (
+                    <div className="mt-12">
+                      <div className="flex justify-between items-center mb-8">
+                        <h3 className="text-2xl font-semibold flex items-center gap-3">
+                          <CheckCircle className="text-emerald-500" /> Amplified Content
+                        </h3>
+                        <div className="flex gap-3">
+                          <button 
+                            onClick={copyAll} 
+                            disabled={isCopyingAll} 
+                            className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 px-5 py-2 rounded-2xl text-sm transition"
+                          >
+                            <Copy className="w-4 h-4" /> {isCopyingAll ? "Copying..." : "Copy All"}
+                          </button>
+                          <button 
+                            onClick={generateShareLink} 
+                            className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 px-5 py-2 rounded-2xl text-sm transition"
+                          >
+                            <Share2 className="w-4 h-4" /> Share
+                          </button>
+                        </div>
+                      </div>
+                      
+                      {shareLink && (
+                        <div className="mb-8 p-4 bg-zinc-900 border border-violet-500/30 rounded-2xl text-sm">
+                          Share Link: <span className="text-violet-400 font-mono break-all">{shareLink}</span>
+                        </div>
+                      )}
+
+                      <div className="grid md:grid-cols-2 gap-6">
+                        {Object.entries(result).map(([platform, text]) => {
+                          const isX = platform === 'twitter';
+                          const displayName = platform === 'twitter' ? 'X' : platform.charAt(0).toUpperCase() + platform.slice(1);
+                          const safeText = typeof text === 'string' ? text : JSON.stringify(text, null, 2);
+
+                          return (
+                            <div key={platform} className="bg-zinc-900 border border-white/10 rounded-2xl p-6 group relative hover:border-violet-400/50 transition-all">
+                              <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-3">
+                                  {isX && (
+                                    <div className="w-6 h-6 bg-white rounded flex items-center justify-center">
+                                      <span className="text-black font-black text-2xl leading-none">𝕏</span>
+                                    </div>
+                                  )}
+                                  <p className="uppercase text-sm text-violet-400 tracking-widest font-medium">
+                                    {displayName}
+                                  </p>
+                                </div>
+                                <div className="flex gap-2">
+                                  <button 
+                                    onClick={() => regeneratePlatform(platform)} 
+                                    className="opacity-0 group-hover:opacity-100 transition text-xs px-3 py-1 rounded-full hover:bg-zinc-800 flex items-center gap-1"
+                                  >
+                                    <RotateCw className="w-3 h-3" /> Regenerate
+                                  </button>
+                                  <button 
+                                    onClick={() => copyToClipboard(text, displayName)} 
+                                    className="opacity-0 group-hover:opacity-100 transition bg-zinc-800 hover:bg-zinc-700 text-xs px-4 py-1.5 rounded-full flex items-center gap-1.5"
+                                  >
+                                    📋 Copy
+                                  </button>
+                                </div>
+                              </div>
+                              <p className="text-zinc-300 text-sm leading-relaxed whitespace-pre-wrap">
+                                {safeText}
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Video Mode */}
+              {activeMode === 'video' && (
+                <div className="max-w-4xl mx-auto">
+                  <VideoRecorder />
+                </div>
+              )}
             </div>
 
+            {/* History Sidebar */}
             {showHistory && (
               <div className="w-96 bg-zinc-900 border-l border-white/10 p-6 overflow-auto h-screen">
                 <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
