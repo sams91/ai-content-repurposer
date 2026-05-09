@@ -1,64 +1,523 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useEffect } from 'react';
+import { Sparkles, ArrowRight, CheckCircle, RefreshCw, LogOut, Clock, Upload, Copy, RotateCw, Share2 } from 'lucide-react';
+import { supabase } from './supabase';
 
 export default function Home() {
+  const [content, setContent] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [result, setResult] = useState<any>(null);
+  const [user, setUser] = useState<any>(null);
+  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isAuthLoading, setIsAuthLoading] = useState(false);
+  const [history, setHistory] = useState<any[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isCopyingAll, setIsCopyingAll] = useState(false);
+  const [shareLink, setShareLink] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (user) loadHistory();
+  }, [user]);
+
+  const loadHistory = async () => {
+    const { data } = await supabase
+      .from('content_history')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+
+    setHistory(data || []);
+  };
+
+  const handleAuth = async () => {
+    setIsAuthLoading(true);
+    try {
+      if (authMode === 'signup') {
+        const { error } = await supabase.auth.signUp({ email, password });
+        if (error) alert(error.message);
+        else alert("Check your email for confirmation link!");
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) alert(error.message);
+      }
+    } catch (err) {
+      alert("Something went wrong");
+    }
+    setIsAuthLoading(false);
+  };
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+  };
+
+  const showToast = (message: string, isError = false) => {
+    const toast = document.createElement('div');
+    toast.className = `fixed bottom-6 right-6 px-6 py-3 rounded-2xl text-sm font-medium transition-all duration-300 z-50 ${
+      isError ? 'bg-red-500/90' : 'bg-emerald-500/90'
+    } text-white shadow-2xl border border-white/10`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      setTimeout(() => document.body.removeChild(toast), 300);
+    }, 2500);
+  };
+
+  const handleRepurpose = async (inputContent?: string) => {
+    const textToUse = inputContent || content;
+    if (!textToUse.trim() || !user) return;
+    
+    setIsProcessing(true);
+    setResult(null);
+    setShareLink(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('content', textToUse);
+
+      const response = await fetch('/api/repurpose', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+      setResult(data.outputs);
+      setContent(textToUse);
+
+      await supabase
+        .from('content_history')
+        .insert({
+          user_id: user.id,
+          original_content: data.originalContent || textToUse,
+          outputs: data.outputs
+        });
+
+      loadHistory();
+
+    } catch (error) {
+      showToast("Failed to generate content.", true);
+      console.error(error);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleFileUpload = async (file: File) => {
+    if (!file || !user) return;
+
+    setIsProcessing(true);
+    setResult(null);
+    setShareLink(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('/api/repurpose', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+      setResult(data.outputs);
+      setContent(data.originalContent);
+
+      await supabase
+        .from('content_history')
+        .insert({
+          user_id: user.id,
+          original_content: data.originalContent,
+          outputs: data.outputs
+        });
+
+      loadHistory();
+
+    } catch (error) {
+      showToast("Failed to process file.", true);
+      console.error(error);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleFileUpload(file);
+  };
+
+  const copyToClipboard = async (text: any, label: string) => {
+    const safeText = typeof text === 'string' ? text : JSON.stringify(text, null, 2);
+    try {
+      await navigator.clipboard.writeText(safeText.trim());
+      showToast(`✅ Copied ${label}!`);
+    } catch (err) {
+      showToast("Failed to copy. Please try again.", true);
+    }
+  };
+
+  const copyAll = async () => {
+    if (!result) return;
+    
+    setIsCopyingAll(true);
+    let allText = '';
+
+    Object.entries(result).forEach(([platform, text]) => {
+      const displayName = platform === 'twitter' ? 'X' : platform.charAt(0).toUpperCase() + platform.slice(1);
+      const safeText = typeof text === 'string' ? text : JSON.stringify(text, null, 2);
+      allText += `${displayName.toUpperCase()}:\n${safeText}\n\n`;
+    });
+
+    try {
+      await navigator.clipboard.writeText(allText.trim());
+      showToast("✅ Copied all platforms to clipboard!");
+    } catch (err) {
+      showToast("Failed to copy. Please try again.", true);
+    }
+    
+    setIsCopyingAll(false);
+  };
+
+  const generateShareLink = async () => {
+    if (!result || !user) return;
+
+    const { data, error } = await supabase
+      .from('shared_content')
+      .insert({
+        user_id: user.id,
+        outputs: result,
+        original_content: content
+      })
+      .select('id')
+      .single();
+
+    if (data) {
+      const link = `${window.location.origin}/share/${data.id}`;
+      setShareLink(link);
+      await navigator.clipboard.writeText(link);
+      showToast("✅ Share link copied to clipboard!");
+    } else {
+      showToast("Failed to create share link.", true);
+    }
+  };
+
+  const regeneratePlatform = async (platform: string) => {
+    if (!content.trim() || !user) return;
+    
+    setIsProcessing(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('content', content);
+
+      const response = await fetch('/api/repurpose', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+      
+      setResult(prev => ({
+        ...prev,
+        [platform]: data.outputs[platform]
+      }));
+
+    } catch (error) {
+      showToast("Failed to regenerate.", true);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen bg-[#0a0a0a] text-white relative overflow-hidden">
+      {/* Star field background */}
+      <div className="fixed inset-0 bg-cover bg-center bg-no-repeat pointer-events-none" style={{ backgroundImage: "url('/space-bg.jpg')" }} />
+      <div className="fixed inset-0 bg-black/70 pointer-events-none" />
+
+      <nav className="border-b border-white/10 bg-zinc-950/95 backdrop-blur-md sticky top-0 z-50">
+        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <Sparkles className="w-8 h-8 text-violet-400" />
+              <div className="absolute inset-0 bg-violet-400 blur-xl opacity-30 rounded-full" />
+            </div>
+            <h1 className="text-2xl font-bold tracking-tighter">ContentAmplifier</h1>
+          </div>
+
+          {user && (
+            <div className="flex items-center gap-6">
+              <button onClick={() => window.location.href = '/why-amplify'} className="flex items-center gap-2 text-sm hover:text-violet-400 transition">
+                Why Amplify
+              </button>
+              <button onClick={() => window.location.href = '/pricing'} className="flex items-center gap-2 text-sm hover:text-violet-400 transition">
+                Pricing
+              </button>
+              <button onClick={() => setShowHistory(!showHistory)} className="flex items-center gap-2 text-sm hover:text-violet-400 transition">
+                <Clock className="w-4 h-4" /> History
+              </button>
+              <span className="text-sm text-zinc-400">{user.email}</span>
+              <button onClick={handleSignOut} className="flex items-center gap-2 text-sm text-zinc-400 hover:text-white transition">
+                <LogOut className="w-4 h-4" /> Sign out
+              </button>
+            </div>
+          )}
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+      </nav>
+
+      <main className="max-w-6xl mx-auto px-6 py-16 relative">
+        {!user ? (
+          <div className="max-w-md mx-auto bg-zinc-900/90 border border-white/10 rounded-3xl p-10 backdrop-blur-sm">
+            <h2 className="text-3xl font-bold text-center mb-8">
+              {authMode === 'signin' ? 'Welcome back' : 'Create your account'}
+            </h2>
+            <div className="space-y-6">
+              <input 
+                type="email" 
+                placeholder="Email address" 
+                value={email} 
+                onChange={(e) => setEmail(e.target.value)} 
+                className="w-full bg-zinc-950 border border-white/10 rounded-2xl px-6 py-4 focus:outline-none focus:border-violet-500" 
+              />
+              <input 
+                type="password" 
+                placeholder="Password" 
+                value={password} 
+                onChange={(e) => setPassword(e.target.value)} 
+                className="w-full bg-zinc-950 border border-white/10 rounded-2xl px-6 py-4 focus:outline-none focus:border-violet-500" 
+              />
+
+              <button 
+                onClick={handleAuth} 
+                disabled={isAuthLoading} 
+                className="w-full bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:brightness-110 py-4 rounded-2xl font-semibold transition disabled:opacity-70"
+              >
+                {isAuthLoading ? 'Processing...' : authMode === 'signin' ? 'Sign In' : 'Sign Up'}
+              </button>
+
+              <p 
+                onClick={() => setAuthMode(authMode === 'signin' ? 'signup' : 'signin')} 
+                className="text-center text-sm text-zinc-400 hover:text-white cursor-pointer transition"
+              >
+                {authMode === 'signin' ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="flex gap-8">
+            <div className="flex-1">
+              <div className="text-center mb-16">
+                <h2 className="text-6xl font-bold tracking-tighter mb-6 bg-gradient-to-r from-white via-violet-200 to-white bg-clip-text text-transparent">
+                  One piece of content.<br />Infinite possibilities.
+                </h2>
+                <p className="text-xl text-zinc-400">Amplify your reach across the digital universe</p>
+              </div>
+
+              {/* How it Works */}
+              <div className="max-w-3xl mx-auto mb-16 bg-zinc-900/90 border border-white/10 rounded-3xl p-8 backdrop-blur-sm">
+                <h3 className="text-xl font-semibold mb-8 text-center">How ContentAmplifier Works</h3>
+                <div className="grid md:grid-cols-3 gap-8 text-center">
+                  <div>
+                    <div className="w-12 h-12 mx-auto mb-4 bg-violet-500/10 rounded-2xl flex items-center justify-center">
+                      <span className="text-2xl">1️⃣</span>
+                    </div>
+                    <p className="font-medium mb-2">Share Your Content</p>
+                    <p className="text-sm text-zinc-400">Paste text or upload a DOCX or TXT file</p>
+                  </div>
+                  <div>
+                    <div className="w-12 h-12 mx-auto mb-4 bg-violet-500/10 rounded-2xl flex items-center justify-center">
+                      <span className="text-2xl">2️⃣</span>
+                    </div>
+                    <p className="font-medium mb-2">AI Does the Heavy Lifting</p>
+                    <p className="text-sm text-zinc-400">We instantly optimize it for search and 8 major platforms</p>
+                  </div>
+                  <div>
+                    <div className="w-12 h-12 mx-auto mb-4 bg-violet-500/10 rounded-2xl flex items-center justify-center">
+                      <span className="text-2xl">3️⃣</span>
+                    </div>
+                    <p className="font-medium mb-2">Get Ready-to-Use Versions</p>
+                    <p className="text-sm text-zinc-400">Copy and post across all platforms in seconds</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="max-w-3xl mx-auto">
+                <div 
+                  className={`border-2 border-dashed border-violet-500/30 rounded-3xl p-12 text-center transition-all ${isDragging ? 'border-violet-500 bg-violet-500/10' : 'border-white/20'}`}
+                  onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={handleDrop}
+                >
+                  <Upload className="w-12 h-12 mx-auto mb-4 text-violet-400" />
+                  <p className="text-lg mb-2">Drop a DOCX or TXT file here</p>
+                  <p className="text-sm text-zinc-500 mb-6">or paste text below</p>
+
+                  <input 
+                    type="file" 
+                    accept=".docx,.txt" 
+                    onChange={(e) => e.target.files && handleFileUpload(e.target.files[0])} 
+                    className="hidden" 
+                    id="file-upload" 
+                  />
+                  <label 
+                    htmlFor="file-upload" 
+                    className="cursor-pointer inline-block bg-zinc-900 hover:bg-zinc-800 border border-violet-500/50 px-6 py-3 rounded-2xl text-sm transition"
+                  >
+                    Select File
+                  </label>
+                </div>
+
+                <div className="mt-6 bg-zinc-900/90 border border-white/10 rounded-3xl p-8">
+                  <div className="flex justify-between text-sm text-zinc-500 mb-2">
+                    <span>Input Content</span>
+                    <span>{content.length} characters</span>
+                  </div>
+                  <textarea 
+                    value={content} 
+                    onChange={(e) => setContent(e.target.value)} 
+                    placeholder="Or paste your content here..." 
+                    className="w-full h-48 bg-zinc-950 border border-white/10 rounded-2xl p-6 text-lg placeholder-zinc-500 focus:outline-none focus:border-violet-500 resize-none" 
+                  />
+
+                  <button 
+                    onClick={() => handleRepurpose()} 
+                    disabled={isProcessing || !content.trim()} 
+                    className="mt-6 w-full bg-gradient-to-r from-violet-600 via-fuchsia-600 to-violet-600 hover:brightness-110 disabled:bg-zinc-700 py-4 rounded-2xl font-semibold flex items-center justify-center gap-3 text-lg transition-all duration-300 shadow-lg shadow-violet-500/30"
+                  >
+                    {isProcessing ? (
+                      <>Amplifying Across the Universe <RefreshCw className="w-5 h-5 animate-spin" /></>
+                    ) : (
+                      <>Amplify Content <ArrowRight className="w-5 h-5" /></>
+                    )}
+                  </button>
+                </div>
+
+                {result && (
+                  <div className="mt-12">
+                    <div className="flex justify-between items-center mb-8">
+                      <h3 className="text-2xl font-semibold flex items-center gap-3">
+                        <CheckCircle className="text-emerald-500" /> Amplified Content
+                      </h3>
+                      <div className="flex gap-3">
+                        <button 
+                          onClick={copyAll} 
+                          disabled={isCopyingAll} 
+                          className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 px-5 py-2 rounded-2xl text-sm transition"
+                        >
+                          <Copy className="w-4 h-4" /> {isCopyingAll ? "Copying..." : "Copy All"}
+                        </button>
+                        <button 
+                          onClick={generateShareLink} 
+                          className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 px-5 py-2 rounded-2xl text-sm transition"
+                        >
+                          <Share2 className="w-4 h-4" /> Share
+                        </button>
+                      </div>
+                    </div>
+                    
+                    {shareLink && (
+                      <div className="mb-8 p-4 bg-zinc-900 border border-violet-500/30 rounded-2xl text-sm">
+                        Share Link: <span className="text-violet-400 font-mono break-all">{shareLink}</span>
+                      </div>
+                    )}
+
+                    <div className="grid md:grid-cols-2 gap-6">
+                      {Object.entries(result).map(([platform, text]) => {
+                        const isX = platform === 'twitter';
+                        const displayName = platform === 'twitter' ? 'X' : platform.charAt(0).toUpperCase() + platform.slice(1);
+                        const safeText = typeof text === 'string' ? text : JSON.stringify(text, null, 2);
+
+                        return (
+                          <div key={platform} className="bg-zinc-900 border border-white/10 rounded-2xl p-6 group relative hover:border-violet-400/50 transition-all">
+                            <div className="flex items-center justify-between mb-4">
+                              <div className="flex items-center gap-3">
+                                {isX && (
+                                  <div className="w-6 h-6 bg-white rounded flex items-center justify-center">
+                                    <span className="text-black font-black text-2xl leading-none">𝕏</span>
+                                  </div>
+                                )}
+                                <p className="uppercase text-sm text-violet-400 tracking-widest font-medium">
+                                  {displayName}
+                                </p>
+                              </div>
+                              <div className="flex gap-2">
+                                <button 
+                                  onClick={() => regeneratePlatform(platform)} 
+                                  className="opacity-0 group-hover:opacity-100 transition text-xs px-3 py-1 rounded-full hover:bg-zinc-800 flex items-center gap-1"
+                                >
+                                  <RotateCw className="w-3 h-3" /> Regenerate
+                                </button>
+                                <button 
+                                  onClick={() => copyToClipboard(text, displayName)} 
+                                  className="opacity-0 group-hover:opacity-100 transition bg-zinc-800 hover:bg-zinc-700 text-xs px-4 py-1.5 rounded-full flex items-center gap-1.5"
+                                >
+                                  📋 Copy
+                                </button>
+                              </div>
+                            </div>
+                            <p className="text-zinc-300 text-sm leading-relaxed whitespace-pre-wrap">
+                              {safeText}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {showHistory && (
+              <div className="w-96 bg-zinc-900 border-l border-white/10 p-6 overflow-auto h-screen">
+                <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
+                  <Clock className="w-5 h-5" /> History
+                </h3>
+                {history.length === 0 ? (
+                  <p className="text-zinc-500">No history yet.</p>
+                ) : (
+                  <div className="space-y-4">
+                    {history.map((item, index) => (
+                      <div 
+                        key={index} 
+                        onClick={() => { 
+                          setContent(item.original_content); 
+                          setShowHistory(false); 
+                          window.scrollTo({ top: 0, behavior: 'smooth' }); 
+                        }}
+                        className="border border-white/10 rounded-2xl p-4 text-sm cursor-pointer hover:border-violet-400 hover:bg-zinc-800/50 transition-all group"
+                      >
+                        <p className="text-zinc-500 text-xs mb-2">
+                          {new Date(item.created_at).toLocaleDateString()} • {new Date(item.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                        </p>
+                        <p className="line-clamp-3 text-zinc-400 group-hover:text-zinc-200 transition">
+                          {item.original_content}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </main>
     </div>
   );
