@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAIClient, getModel, getVisionModel } from '@/lib/ai';
 import OpenAI from 'openai';
 
+const MAX_SIZE_BYTES = 2 * 1024 * 1024 * 1024; // 2GB
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -16,9 +18,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "File must be a video" }, { status: 400 });
     }
 
-    // Limit file size (roughly 100MB)
-    if (videoFile.size > 100 * 1024 * 1024) {
-      return NextResponse.json({ error: "Video file is too large (max 100MB)" }, { status: 400 });
+    // Updated size limit
+    if (videoFile.size > MAX_SIZE_BYTES) {
+      return NextResponse.json({ 
+        error: `Video file is too large (max 2GB)` 
+      }, { status: 400 });
     }
 
     const client = getAIClient();
@@ -85,7 +89,14 @@ Create highly engaging, platform-optimized content. Return clean JSON only:
     return NextResponse.json({
       success: true,
       transcription: transcription,
-      outputs: result,
+      outputs: result,           // Keep consistent with your frontend
+      platforms: Object.entries(result).map(([platform, data]) => ({
+        platform: platform.toUpperCase(),
+        title: (data as any).title || (data as any).caption || "",
+        description: (data as any).description || "",
+        caption: (data as any).caption || (data as any).full_caption || (data as any).text || "",
+        hashtags: (data as any).hashtags ? (data as any).hashtags.join(" ") : "",
+      })),
       provider: process.env.AI_PROVIDER || 'openai',
       model: visionModel,
     });
@@ -97,3 +108,12 @@ Create highly engaging, platform-optimized content. Return clean JSON only:
     }, { status: 500 });
   }
 }
+
+// Important: Increase body size limit for large video uploads
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '2gb',
+    },
+  },
+};
