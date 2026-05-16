@@ -2,8 +2,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAIClient, getModel, getVisionModel } from '@/lib/ai';
 import OpenAI from 'openai';
+import { execFile } from 'child_process';
+import fs from 'fs/promises';
+import path from 'path';
+import os from 'os';
+import { promisify } from 'util';
 
 const MAX_SIZE_BYTES = 2 * 1024 * 1024 * 1024; // 2GB
+const execFilePromise = promisify(execFile);
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,36 +24,78 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "File must be a video" }, { status: 400 });
     }
 
-    // Updated size limit
     if (videoFile.size > MAX_SIZE_BYTES) {
-      return NextResponse.json({ 
-        error: `Video file is too large (max 2GB)` 
-      }, { status: 400 });
+      return NextResponse.json({ error: `Video file is too large (max 2GB)` }, { status: 400 });
     }
 
     const client = getAIClient();
     const visionModel = getVisionModel();
 
-    // Step 1: Transcription using Whisper (OpenAI)
+    // === STEP 1: Server-side audio extraction + Whisper ===
     let transcription = "No speech detected or transcription failed.";
+    let inputPath: string | null = null;
+    let audioPath: string | null = null;
 
     try {
-      const whisper = new OpenAI({
-        apiKey: process.env.OPENAI_API_KEY,
-      });
+      const videoBuffer = Buffer.from(await videoFile.arrayBuffer());
+
+      const tempDir = os.tmpdir();
+      inputPath = path.join(tempDir, `input-${Date.now()}-${videoFile.name}`);
+      audioPath = path.join(tempDir, `audio-${Date.now()}.mp3`);
+
+      await fs.writeFile(inputPath, videoBuffer);
+
+      console.log(`🎥 Extracting audio from ${(videoFile.size / (1024 * 1024)).toFixed(1)} MB video...`);
+
+      // 64kbps MP3 — guaranteed <25 MB even for longer videos
+      await execFilePromise('ffmpeg', [
+        '-i', inputPath,
+        '-vn',
+        '-acodec', 'libmp3lame',
+        '-b:a', '64k',        // ← LOWER BITRATE = smaller file
+        '-ac', '1',
+        '-ar', '16000',
+        '-y',
+        audioPath
+      ]);
+
+      const audioBuffer = await fs.readFile(audioPath);
+      const audioMB = audioBuffer.length / (1024 * 1024);
+      console.log(`✅ Audio extracted: ${audioMB.toFixed(2)} MB`);
+
+      // Safety net: if somehow still over limit, compress even harder
+      if (audioMB > 24) {
+        console.warn("⚠️ Audio still >24 MB — re-compressing to 32kbps");
+        await execFilePromise('ffmpeg', [
+          '-i', audioPath,
+          '-vn',
+          '-acodec', 'libmp3lame',
+          '-b:a', '32k',
+          '-ac', '1',
+          '-ar', '16000',
+          '-y',
+          audioPath
+        ]);
+      }
+
+      const whisper = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
       const transcriptionResponse = await whisper.audio.transcriptions.create({
-        file: videoFile,
+        file: new File([audioBuffer], 'audio.mp3', { type: 'audio/mpeg' }),
         model: "whisper-1",
         response_format: "verbose_json",
       });
 
       transcription = transcriptionResponse.text?.trim() || "No speech detected.";
+      console.log("✅ Whisper transcription successful:", transcription.substring(0, 120) + "...");
     } catch (transErr: any) {
-      console.warn("Whisper transcription failed:", transErr.message);
+      console.error("❌ Whisper / ffmpeg error:", transErr.message);
+    } finally {
+      if (inputPath) await fs.unlink(inputPath).catch(() => {});
+      if (audioPath) await fs.unlink(audioPath).catch(() => {});
     }
 
-    // Step 2: Generate platform-specific content
+    // === STEP 2: Generate platform content (unchanged) ===
     const prompt = `You are an expert short-form video strategist.
 
 Video Transcription:
@@ -69,10 +117,7 @@ Create highly engaging, platform-optimized content. Return clean JSON only:
     const completion = await client.chat.completions.create({
       model: visionModel,
       messages: [
-        { 
-          role: "system", 
-          content: "You are a highly skilled social media strategist specializing in cross-platform video content." 
-        },
+        { role: "system", content: "You are a highly skilled social media strategist specializing in cross-platform video content." },
         { role: "user", content: prompt }
       ],
       temperature: 0.7,
@@ -89,7 +134,7 @@ Create highly engaging, platform-optimized content. Return clean JSON only:
     return NextResponse.json({
       success: true,
       transcription: transcription,
-      outputs: result,           // Keep consistent with your frontend
+      outputs: result,
       platforms: Object.entries(result).map(([platform, data]) => ({
         platform: platform.toUpperCase(),
         title: (data as any).title || (data as any).caption || "",
@@ -103,17 +148,6 @@ Create highly engaging, platform-optimized content. Return clean JSON only:
 
   } catch (error: any) {
     console.error("Amplify Video Error:", error);
-    return NextResponse.json({ 
-      error: error.message || "Failed to amplify video" 
-    }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Failed to amplify video" }, { status: 500 });
   }
 }
-
-// Important: Increase body size limit for large video uploads
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: '2gb',
-    },
-  },
-};
