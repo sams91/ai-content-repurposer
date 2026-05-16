@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { RotateCcw, Copy, Square, Send } from 'lucide-react';
+import { RotateCcw, Copy, Square, Send, Download } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
@@ -40,10 +40,12 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
 
-  // Auto-fetch accounts
   const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
   const [showZernioModal, setShowZernioModal] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState('');
+
+  const [showDownloadDropdown, setShowDownloadDropdown] = useState(false);
+  const [isOptimizing, setIsOptimizing] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -52,7 +54,6 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const liveVideoRef = useRef<HTMLVideoElement>(null);
 
-  // Load user
   useEffect(() => {
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -155,17 +156,13 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
       formData.append('user_id', currentUser.id);
 
       const response = await fetch('/api/amplify-video', { method: 'POST', body: formData });
-      console.log("📡 API response status:", response.status);
-
       const data = await response.json();
-      console.log("📦 Full API response:", data);
 
       if (!response.ok) throw new Error(data.error || 'Failed');
 
       setTranscription(data.transcription || 'No transcription available.');
       setResults(data.platforms || []);
       setVideoPublicUrl(data.video_url || null);
-      console.log("✅ Results set — video_public_url:", data.video_url);
 
       onAmplifySuccess?.();
     } catch (err: any) {
@@ -176,15 +173,12 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
     }
   };
 
-  // Fetch connected accounts from Zernio
   const fetchConnectedAccounts = async () => {
     if (!currentUser) return;
     try {
       const res = await fetch(`/api/zernio/accounts?user_id=${currentUser.id}`);
       const data = await res.json();
-      if (data.accounts) {
-        setConnectedAccounts(data.accounts);
-      }
+      if (data.accounts) setConnectedAccounts(data.accounts);
     } catch (e) {
       console.error("Failed to fetch accounts", e);
     }
@@ -229,6 +223,52 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
     } catch (e) {
       console.error(e);
       alert('Failed to call Zernio');
+    }
+  };
+
+  // FIXED: Blob-based download forces actual file save (no full-screen video player)
+  const optimizeAndDownload = async (platform: string) => {
+    if (!videoPublicUrl) return;
+    setIsOptimizing(true);
+    try {
+      const res = await fetch('/api/optimize-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_url: videoPublicUrl,
+          platform: platform.toLowerCase(),
+          user_id: currentUser.id,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success && data.optimized_url) {
+        // Fetch as blob → force download
+        const fileRes = await fetch(data.optimized_url);
+        const blob = await fileRes.blob();
+        const blobUrl = URL.createObjectURL(blob);
+
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = `optimized-${platform}.mp4`;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        // Clean up blob URL
+        URL.revokeObjectURL(blobUrl);
+
+        alert(data.message || `✅ Optimized for ${platform.toUpperCase()}`);
+      } else {
+        alert('Optimization failed');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Failed to optimize video');
+    } finally {
+      setIsOptimizing(false);
+      setShowDownloadDropdown(false);
     }
   };
 
@@ -280,6 +320,7 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
       <div className="text-center">
         <h1 className="text-4xl font-bold mb-2">Video Amplifier</h1>
         <p className="text-zinc-400">Record or upload → Optimized content for all platforms</p>
+        <p className="text-emerald-400 text-sm mt-2">Your video is formatted for the chosen platform only when you click Post with Zernio (or Download).</p>
       </div>
 
       <div className="border border-white/10 bg-zinc-950 rounded-3xl p-8">
@@ -367,18 +408,45 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
 
       {error && <div className="bg-red-950 border border-red-500/50 p-6 rounded-3xl text-red-300">{error}</div>}
 
-      {/* Results - Platform boxes */}
+      {/* Results */}
       {results && results.length > 0 && (
         <div className="space-y-8">
           <div className="flex justify-between items-center">
             <h2 className="text-3xl font-bold">✅ Amplification Complete!</h2>
             <div className="flex gap-3">
-              <button
-                onClick={copyAllResults}
-                className="flex items-center gap-2 px-6 py-3 bg-white/10 hover:bg-white/20 rounded-2xl"
-              >
+              <button onClick={copyAllResults} className="flex items-center gap-2 px-6 py-3 bg-white/10 hover:bg-white/20 rounded-2xl">
                 <Copy size={18} /> Copy All Results
               </button>
+
+              {/* Download dropdown - individual platforms only */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowDownloadDropdown(!showDownloadDropdown)}
+                  disabled={isOptimizing}
+                  className="flex items-center gap-2 px-6 py-3 bg-amber-600 hover:bg-amber-700 rounded-2xl font-semibold disabled:opacity-70"
+                >
+                  <Download size={18} />
+                  {isOptimizing ? 'Optimizing...' : 'Download'}
+                </button>
+
+                {showDownloadDropdown && (
+                  <div className="absolute right-0 mt-2 w-64 bg-zinc-900 border border-white/10 rounded-2xl shadow-xl z-50 py-2">
+                    <div className="px-4 py-2 text-xs text-zinc-400 border-b border-white/10">
+                      Video will be formatted on-demand for the selected platform.
+                    </div>
+                    {['linkedin', 'youtube', 'tiktok', 'instagram', 'threads', 'rumble'].map((plat) => (
+                      <button
+                        key={plat}
+                        onClick={() => optimizeAndDownload(plat)}
+                        className="w-full text-left px-6 py-3 hover:bg-white/10 flex justify-between items-center text-sm"
+                      >
+                        <span className="capitalize">{plat}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <button
                 onClick={() => {
                   fetchConnectedAccounts();
@@ -434,7 +502,7 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
             ))}
           </div>
 
-          {/* Auto-fetch modal */}
+          {/* Zernio modal */}
           {showZernioModal && (
             <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
               <div className="bg-zinc-900 rounded-3xl p-8 max-w-md w-full mx-4">
@@ -457,19 +525,8 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
                   </div>
 
                   <div className="flex gap-3 pt-4">
-                    <button
-                      onClick={() => setShowZernioModal(false)}
-                      className="flex-1 py-4 border border-white/20 rounded-2xl hover:bg-white/5"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={postToZernio}
-                      disabled={!selectedAccountId}
-                      className="flex-1 py-4 bg-emerald-600 hover:bg-emerald-700 rounded-2xl font-semibold disabled:opacity-50"
-                    >
-                      Post Now
-                    </button>
+                    <button onClick={() => setShowZernioModal(false)} className="flex-1 py-4 border border-white/20 rounded-2xl hover:bg-white/5">Cancel</button>
+                    <button onClick={postToZernio} disabled={!selectedAccountId} className="flex-1 py-4 bg-emerald-600 hover:bg-emerald-700 rounded-2xl font-semibold disabled:opacity-50">Post Now</button>
                   </div>
                 </div>
               </div>
