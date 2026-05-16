@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Sparkles, ArrowRight, CheckCircle, RefreshCw, LogOut, Clock, Upload, Copy, RotateCw, Share2, Video, Play } from 'lucide-react';
+import { Sparkles, ArrowRight, CheckCircle, RefreshCw, LogOut, Clock, Upload, Copy, RotateCw, Share2, Video, Play, Zap, Send, HelpCircle } from 'lucide-react';
 import { supabase } from './supabase';
 import VideoRecorder from '@/components/VideoRecorder';
 
@@ -23,6 +23,18 @@ export default function Home() {
   const [shareLink, setShareLink] = useState<string | null>(null);
   const [activeMode, setActiveMode] = useState<'text' | 'video'>('video');
 
+  // Zernio key modal
+  const [showZernioKeyModal, setShowZernioKeyModal] = useState(false);
+  const [zernioApiKeyInput, setZernioApiKeyInput] = useState('');
+
+  // Zernio instructions/help modal
+  const [showZernioHelpModal, setShowZernioHelpModal] = useState(false);
+
+  // Text Mode Zernio auto-fetch
+  const [textConnectedAccounts, setTextConnectedAccounts] = useState<any[]>([]);
+  const [showTextZernioModal, setShowTextZernioModal] = useState(false);
+  const [selectedTextAccountId, setSelectedTextAccountId] = useState('');
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
@@ -42,7 +54,6 @@ export default function Home() {
   const loadHistories = async () => {
     if (!user) return;
 
-    // Text history
     const { data: textData } = await supabase
       .from('content_history')
       .select('*')
@@ -50,7 +61,6 @@ export default function Home() {
       .order('created_at', { ascending: false });
     setTextHistory(textData || []);
 
-    // Video history
     const { data: videoData } = await supabase
       .from('video_history')
       .select('*')
@@ -61,6 +71,75 @@ export default function Home() {
 
   const refreshHistory = () => {
     if (user) loadHistories();
+  };
+
+  const saveZernioKey = async () => {
+    if (!user || !zernioApiKeyInput.trim()) {
+      alert('Please enter your Zernio API key');
+      return;
+    }
+
+    const { error } = await supabase
+      .from('user_zernio')
+      .upsert({ 
+        user_id: user.id, 
+        api_key: zernioApiKeyInput.trim() 
+      });
+
+    if (error) {
+      alert('Error saving key: ' + error.message);
+    } else {
+      alert('✅ Zernio API key saved successfully!');
+      setShowZernioKeyModal(false);
+      setZernioApiKeyInput('');
+    }
+  };
+
+  // Fetch connected accounts for Text Mode
+  const fetchTextConnectedAccounts = async () => {
+    if (!user) return;
+    try {
+      const res = await fetch(`/api/zernio/accounts?user_id=${user.id}`);
+      const data = await res.json();
+      if (data.accounts) setTextConnectedAccounts(data.accounts);
+    } catch (e) {
+      console.error("Failed to fetch accounts", e);
+    }
+  };
+
+  const postTextToZernio = async () => {
+    if (!user || !selectedTextAccountId || !result) return;
+
+    const selectedAccount = textConnectedAccounts.find(a => a._id === selectedTextAccountId);
+    if (!selectedAccount) return;
+
+    const firstPlatformKey = Object.keys(result)[0];
+    const postContent = result[firstPlatformKey];
+
+    try {
+      const res = await fetch('/api/zernio/post', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          platform_id: selectedAccount._id,
+          platform: selectedAccount.platform,
+          content: postContent,
+          user_id: user.id,
+        }),
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        alert(json.message);
+        setShowTextZernioModal(false);
+        setSelectedTextAccountId('');
+      } else {
+        alert('Error: ' + json.error);
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Failed to call Zernio');
+    }
   };
 
   const handleAuth = async () => {
@@ -282,21 +361,20 @@ export default function Home() {
 
           {user && (
             <div className="flex items-center gap-6 text-sm">
-              <button 
-                onClick={() => window.location.href = '/'} 
-                className="hover:text-violet-400 transition"
-              >
-                Home
-              </button>
-              <button onClick={() => window.location.href = '/why-amplify'} className="hover:text-violet-400 transition">
-                Why Amplify
-              </button>
-              <button onClick={() => window.location.href = '/pricing'} className="hover:text-violet-400 transition">
-                Pricing
-              </button>
+              <button onClick={() => window.location.href = '/'} className="hover:text-violet-400 transition">Home</button>
+              <button onClick={() => window.location.href = '/why-amplify'} className="hover:text-violet-400 transition">Why Amplify</button>
+              <button onClick={() => window.location.href = '/pricing'} className="hover:text-violet-400 transition">Pricing</button>
               <button onClick={() => setShowHistory(!showHistory)} className="flex items-center gap-2 hover:text-violet-400 transition">
                 <Clock className="w-4 h-4" /> History
               </button>
+              
+              <button 
+                onClick={() => setShowZernioKeyModal(true)}
+                className="flex items-center gap-2 hover:text-violet-400 transition"
+              >
+                <Zap className="w-4 h-4" /> Zernio
+              </button>
+
               <span className="text-zinc-400">{user.email}</span>
               <button onClick={handleSignOut} className="flex items-center gap-2 text-zinc-400 hover:text-white transition">
                 <LogOut className="w-4 h-4" /> Sign out
@@ -372,7 +450,7 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Text Mode */}
+              {/* TEXT MODE */}
               {activeMode === 'text' && (
                 <div className="max-w-3xl mx-auto">
                   <div 
@@ -432,18 +510,20 @@ export default function Home() {
                           <CheckCircle className="text-emerald-500" /> Amplified Content
                         </h3>
                         <div className="flex gap-3">
-                          <button 
-                            onClick={copyAll} 
-                            disabled={isCopyingAll} 
-                            className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 px-5 py-2 rounded-2xl text-sm transition"
-                          >
+                          <button onClick={copyAll} disabled={isCopyingAll} className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 px-5 py-2 rounded-2xl text-sm transition">
                             <Copy className="w-4 h-4" /> {isCopyingAll ? "Copying..." : "Copy All"}
                           </button>
-                          <button 
-                            onClick={generateShareLink} 
-                            className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 px-5 py-2 rounded-2xl text-sm transition"
-                          >
+                          <button onClick={generateShareLink} className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 px-5 py-2 rounded-2xl text-sm transition">
                             <Share2 className="w-4 h-4" /> Share
+                          </button>
+                          <button
+                            onClick={() => {
+                              fetchTextConnectedAccounts();
+                              setShowTextZernioModal(true);
+                            }}
+                            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 px-5 py-2 rounded-2xl text-sm font-semibold"
+                          >
+                            <Send className="w-4 h-4" /> Post with Zernio
                           </button>
                         </div>
                       </div>
@@ -495,12 +575,43 @@ export default function Home() {
                           );
                         })}
                       </div>
+
+                      {/* Text Mode Zernio modal */}
+                      {showTextZernioModal && (
+                        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+                          <div className="bg-zinc-900 rounded-3xl p-8 max-w-md w-full mx-4">
+                            <h3 className="text-2xl font-bold mb-6">Post to Zernio</h3>
+                            <div className="space-y-6">
+                              <div>
+                                <label className="block text-sm text-zinc-400 mb-1">Connected Account</label>
+                                <select
+                                  value={selectedTextAccountId}
+                                  onChange={(e) => setSelectedTextAccountId(e.target.value)}
+                                  className="w-full bg-zinc-950 border border-white/10 rounded-2xl px-4 py-3 focus:outline-none"
+                                >
+                                  <option value="">Select account...</option>
+                                  {textConnectedAccounts.map((acc) => (
+                                    <option key={acc._id} value={acc._id}>
+                                      {acc.platform.toUpperCase()} — {acc.name || acc.username || acc._id}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              <div className="flex gap-3 pt-4">
+                                <button onClick={() => setShowTextZernioModal(false)} className="flex-1 py-4 border border-white/20 rounded-2xl hover:bg-white/5">Cancel</button>
+                                <button onClick={postTextToZernio} disabled={!selectedTextAccountId} className="flex-1 py-4 bg-emerald-600 hover:bg-emerald-700 rounded-2xl font-semibold disabled:opacity-50">Post Now</button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
               )}
 
-              {/* Video Mode */}
+              {/* VIDEO MODE */}
               {activeMode === 'video' && (
                 <div className="max-w-4xl mx-auto">
                   <VideoRecorder onAmplifySuccess={refreshHistory} />
@@ -508,7 +619,7 @@ export default function Home() {
               )}
             </div>
 
-            {/* Unified History Sidebar */}
+            {/* History sidebar */}
             {showHistory && (
               <div className="w-96 bg-zinc-950 border-l border-white/10 p-6 overflow-auto h-screen sticky top-0">
                 <div className="flex justify-between items-center mb-6">
@@ -530,7 +641,6 @@ export default function Home() {
                   ))}
                 </div>
 
-                {/* Video History */}
                 {(activeHistoryTab === 'all' || activeHistoryTab === 'video') && (
                   <div className="mb-10">
                     <h4 className="uppercase text-xs tracking-widest text-zinc-500 mb-4 flex items-center gap-2">
@@ -556,7 +666,6 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* Text History */}
                 {(activeHistoryTab === 'all' || activeHistoryTab === 'text') && textHistory.length > 0 && (
                   <div>
                     <h4 className="uppercase text-xs tracking-widest text-zinc-500 mb-4">Text Content</h4>
@@ -587,6 +696,119 @@ export default function Home() {
           </div>
         )}
       </main>
+
+      {/* Zernio API Key Modal */}
+      {showZernioKeyModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+          <div className="bg-zinc-900 rounded-3xl p-8 max-w-md w-full mx-4">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-bold">Zernio Setup</h3>
+              <button 
+                onClick={() => setShowZernioHelpModal(true)}
+                className="flex items-center gap-1 text-violet-400 hover:text-violet-300 text-sm"
+              >
+                <HelpCircle size={16} /> How to set up
+              </button>
+            </div>
+            
+            <p className="text-zinc-400 mb-6 text-sm">Paste your Zernio API key below</p>
+            
+            <input 
+              type="password"
+              value={zernioApiKeyInput}
+              onChange={(e) => setZernioApiKeyInput(e.target.value)}
+              placeholder="sk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+              className="w-full bg-zinc-950 border border-white/10 rounded-2xl px-6 py-4 mb-6 focus:outline-none focus:border-violet-400"
+            />
+
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setShowZernioKeyModal(false)} 
+                className="flex-1 py-4 border border-white/20 rounded-2xl hover:bg-white/5"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={saveZernioKey} 
+                className="flex-1 py-4 bg-violet-600 hover:bg-violet-700 rounded-2xl font-semibold"
+              >
+                Save Key
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Zernio Instructions Modal - Final polished version with soft affiliate note */}
+      {showZernioHelpModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+          <div className="bg-zinc-900 rounded-3xl p-8 max-w-2xl w-full mx-4 max-h-[90vh] overflow-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-bold">How to connect Zernio (3 easy steps)</h3>
+              <button onClick={() => setShowZernioHelpModal(false)} className="text-zinc-400 hover:text-white">✕</button>
+            </div>
+
+            <div className="space-y-8">
+              {/* Step 1 */}
+              <div className="flex gap-6">
+                <div className="w-8 h-8 bg-violet-600 text-white rounded-2xl flex items-center justify-center font-bold flex-shrink-0">1</div>
+                <div className="flex-1">
+                  <h4 className="font-semibold mb-2">Create a free Zernio account</h4>
+                  <p className="text-zinc-400">Go to <a href="https://zernio.com" target="_blank" className="text-violet-400 hover:underline">zernio.com</a> and sign up (the first 2 social accounts are completely free).</p>
+                </div>
+              </div>
+
+              {/* Step 2 - Crystal clear */}
+              <div className="flex gap-6">
+                <div className="w-8 h-8 bg-violet-600 text-white rounded-2xl flex items-center justify-center font-bold flex-shrink-0">2</div>
+                <div className="flex-1">
+                  <h4 className="font-semibold mb-2">Copy your API key from Zernio</h4>
+                  <p className="text-zinc-400 mb-3">In the Zernio dashboard go to <strong>API Keys</strong>, copy the full key (it starts with <code className="bg-zinc-800 px-1 rounded">sk_</code>).</p>
+                  <p className="text-emerald-400 font-medium mb-3">Then paste it in the box below and click “Save Key”:</p>
+                  <div className="bg-zinc-950 border border-white/10 rounded-2xl p-6 text-center">
+                    <div className="inline-block bg-zinc-900 border border-violet-400/30 rounded-xl px-6 py-4 text-sm text-zinc-300">
+                      sk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+                    </div>
+                    <div className="mt-4 text-xs text-violet-400">↑ Paste your full key here</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Step 3 */}
+              <div className="flex gap-6">
+                <div className="w-8 h-8 bg-violet-600 text-white rounded-2xl flex items-center justify-center font-bold flex-shrink-0">3</div>
+                <div className="flex-1">
+                  <h4 className="font-semibold mb-2">Connect your social accounts in Zernio</h4>
+                  <p className="text-zinc-400">In Zernio click “Add account” and connect the platforms you want to post to (LinkedIn, TikTok, Instagram, etc.).</p>
+                  <p className="text-emerald-400 mt-4 text-sm">Come back here and click “Post with Zernio” — we’ll automatically show your accounts in a nice dropdown and publish instantly.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-10">
+              <button 
+                onClick={() => setShowZernioHelpModal(false)}
+                className="flex-1 py-4 border border-white/20 rounded-2xl hover:bg-white/5"
+              >
+                Got it
+              </button>
+              <button 
+                onClick={() => {
+                  setShowZernioHelpModal(false);
+                  setShowZernioKeyModal(true);
+                }}
+                className="flex-1 py-4 bg-violet-600 hover:bg-violet-700 rounded-2xl font-semibold"
+              >
+                Paste my key now
+              </button>
+            </div>
+
+            <p className="text-center text-xs text-zinc-500 mt-6">
+              This integration is powered by Zernio. If you upgrade to a paid Zernio plan later, it helps support the continued development of ContentAmplifier at no extra cost to you.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { RotateCcw, Copy, Square } from 'lucide-react';
+import { RotateCcw, Copy, Square, Send } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
@@ -20,9 +20,17 @@ interface PlatformResult {
   text?: string;
 }
 
+interface ConnectedAccount {
+  _id: string;
+  platform: string;
+  name?: string;
+  username?: string;
+}
+
 export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?: () => void }) {
   const [videoBlob, setVideoBlob] = useState<Blob | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [videoPublicUrl, setVideoPublicUrl] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [isAmplifying, setIsAmplifying] = useState(false);
@@ -32,12 +40,16 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
 
+  // Auto-fetch accounts
+  const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
+  const [showZernioModal, setShowZernioModal] = useState(false);
+  const [selectedAccountId, setSelectedAccountId] = useState('');
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-
   const liveVideoRef = useRef<HTMLVideoElement>(null);
 
   // Load user
@@ -66,9 +78,8 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
       streamRef.current = stream;
       console.log("✅ Camera stream obtained");
 
-      // === FIX FOR BLACK PREVIEW ===
-      setIsRecording(true);                    // Make the live div visible FIRST
-      await new Promise(resolve => setTimeout(resolve, 10)); // Let React re-render
+      setIsRecording(true);
+      await new Promise(resolve => setTimeout(resolve, 10));
 
       if (liveVideoRef.current) {
         liveVideoRef.current.srcObject = stream;
@@ -153,9 +164,9 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
 
       setTranscription(data.transcription || 'No transcription available.');
       setResults(data.platforms || []);
-      console.log("✅ Results set in state — results panel should appear. Length:", (data.platforms || []).length);
+      setVideoPublicUrl(data.video_url || null);
+      console.log("✅ Results set — video_public_url:", data.video_url);
 
-      // === REFRESH HISTORY IN SIDEBAR ===
       onAmplifySuccess?.();
     } catch (err: any) {
       console.error("❌ Amplify error:", err);
@@ -165,11 +176,68 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
     }
   };
 
+  // Fetch connected accounts from Zernio
+  const fetchConnectedAccounts = async () => {
+    if (!currentUser) return;
+    try {
+      const res = await fetch(`/api/zernio/accounts?user_id=${currentUser.id}`);
+      const data = await res.json();
+      if (data.accounts) {
+        setConnectedAccounts(data.accounts);
+      }
+    } catch (e) {
+      console.error("Failed to fetch accounts", e);
+    }
+  };
+
+  const postToZernio = async () => {
+    if (!currentUser || !selectedAccountId) {
+      alert('Please select an account');
+      return;
+    }
+
+    const selectedAccount = connectedAccounts.find(a => a._id === selectedAccountId);
+    if (!selectedAccount) return;
+
+    const firstResult = results?.[0];
+    const postContent = firstResult?.caption || firstResult?.text || transcription || 'Amplified content from ContentAmplifier';
+
+    try {
+      const res = await fetch('/api/zernio/post', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          platform_id: selectedAccount._id,
+          platform: selectedAccount.platform,
+          content: postContent,
+          title: firstResult?.title,
+          caption: firstResult?.caption,
+          hashtags: firstResult?.hashtags,
+          video_url: videoPublicUrl,
+          user_id: currentUser.id,
+        }),
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        alert(json.message);
+        setShowZernioModal(false);
+        setSelectedAccountId('');
+      } else {
+        alert('Error: ' + json.error);
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Failed to call Zernio');
+    }
+  };
+
   const resetAll = () => {
     if (videoUrl) URL.revokeObjectURL(videoUrl);
     if (streamRef.current) streamRef.current.getTracks().forEach(track => track.stop());
     setVideoBlob(null);
     setVideoUrl(null);
+    setVideoPublicUrl(null);
     setSelectedFile(null);
     setResults(null);
     setTranscription('');
@@ -304,12 +372,23 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
         <div className="space-y-8">
           <div className="flex justify-between items-center">
             <h2 className="text-3xl font-bold">✅ Amplification Complete!</h2>
-            <button
-              onClick={copyAllResults}
-              className="flex items-center gap-2 px-6 py-3 bg-white/10 hover:bg-white/20 rounded-2xl"
-            >
-              <Copy size={18} /> Copy All Results
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={copyAllResults}
+                className="flex items-center gap-2 px-6 py-3 bg-white/10 hover:bg-white/20 rounded-2xl"
+              >
+                <Copy size={18} /> Copy All Results
+              </button>
+              <button
+                onClick={() => {
+                  fetchConnectedAccounts();
+                  setShowZernioModal(true);
+                }}
+                className="flex items-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 rounded-2xl font-semibold"
+              >
+                <Send size={18} /> Post with Zernio
+              </button>
+            </div>
           </div>
 
           {transcription && (
@@ -354,6 +433,48 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
               </div>
             ))}
           </div>
+
+          {/* Auto-fetch modal */}
+          {showZernioModal && (
+            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+              <div className="bg-zinc-900 rounded-3xl p-8 max-w-md w-full mx-4">
+                <h3 className="text-2xl font-bold mb-6">Post to Zernio</h3>
+                <div className="space-y-6">
+                  <div>
+                    <label className="block text-sm text-zinc-400 mb-1">Connected Account</label>
+                    <select
+                      value={selectedAccountId}
+                      onChange={(e) => setSelectedAccountId(e.target.value)}
+                      className="w-full bg-zinc-950 border border-white/10 rounded-2xl px-4 py-3 focus:outline-none"
+                    >
+                      <option value="">Select account...</option>
+                      {connectedAccounts.map((acc) => (
+                        <option key={acc._id} value={acc._id}>
+                          {acc.platform.toUpperCase()} — {acc.name || acc.username || acc._id}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex gap-3 pt-4">
+                    <button
+                      onClick={() => setShowZernioModal(false)}
+                      className="flex-1 py-4 border border-white/20 rounded-2xl hover:bg-white/5"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={postToZernio}
+                      disabled={!selectedAccountId}
+                      className="flex-1 py-4 bg-emerald-600 hover:bg-emerald-700 rounded-2xl font-semibold disabled:opacity-50"
+                    >
+                      Post Now
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
