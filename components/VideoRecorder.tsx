@@ -38,9 +38,7 @@ export default function VideoRecorder() {
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Separate refs for live and recorded video
   const liveVideoRef = useRef<HTMLVideoElement>(null);
-  const recordedVideoRef = useRef<HTMLVideoElement>(null);
 
   // Load user
   useEffect(() => {
@@ -57,22 +55,25 @@ export default function VideoRecorder() {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  // ==================== RECORDING ====================
   const startRecording = async () => {
+    console.log("🎥 startRecording called");
     setError('');
     setRecordingTime(0);
     chunksRef.current = [];
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user' },
-        audio: true,
-      });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: true });
       streamRef.current = stream;
+      console.log("✅ Camera stream obtained");
+
+      // === FIX FOR BLACK PREVIEW ===
+      setIsRecording(true);                    // Make the live div visible FIRST
+      await new Promise(resolve => setTimeout(resolve, 10)); // Let React re-render
 
       if (liveVideoRef.current) {
         liveVideoRef.current.srcObject = stream;
         await liveVideoRef.current.play();
+        console.log("✅ Live video started playing");
       }
 
       const mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
@@ -88,16 +89,16 @@ export default function VideoRecorder() {
         setVideoUrl(url);
         setVideoBlob(blob);
         setSelectedFile(null);
+        console.log("✅ Recording stopped, blob created");
       };
 
       mediaRecorder.start(1000);
-      setIsRecording(true);
-
-      timerRef.current = setInterval(() => {
-        setRecordingTime((prev) => prev + 1);
-      }, 1000);
+      console.log("✅ Recording started");
+      timerRef.current = setInterval(() => setRecordingTime(p => p + 1), 1000);
     } catch (err: any) {
-      setError('Failed to access camera/microphone. Please allow permissions.');
+      console.error("❌ Camera error:", err);
+      setError('Failed to access camera/microphone.');
+      setIsRecording(false);
     }
   };
 
@@ -108,33 +109,29 @@ export default function VideoRecorder() {
     setIsRecording(false);
   };
 
-  // ==================== FILE UPLOAD ====================
   const triggerFileUpload = () => fileInputRef.current?.click();
 
   const handleFileSelect = useCallback((file: File) => {
     setError('');
     setResults(null);
     setTranscription('');
-
     const sizeMB = file.size / (1024 * 1024);
     if (sizeMB > MAX_SIZE_MB) {
       setError(`Video file is too large (max 2GB)`);
       return;
     }
-
     setSelectedFile(file);
-    const url = URL.createObjectURL(file);
-    setVideoUrl(url);
+    setVideoUrl(URL.createObjectURL(file));
     setVideoBlob(file);
   }, []);
 
-  // ==================== AMPLIFY ====================
   const amplifyVideo = async () => {
     if (!videoBlob || !currentUser) {
       setError(!currentUser ? "Please log in to amplify videos" : "No video selected");
       return;
     }
 
+    console.log("🚀 amplifyVideo called");
     setIsAmplifying(true);
     setError('');
     setResults(null);
@@ -146,18 +143,19 @@ export default function VideoRecorder() {
       formData.append('video', videoBlob, fileName);
       formData.append('user_id', currentUser.id);
 
-      const response = await fetch('/api/amplify-video', {
-        method: 'POST',
-        body: formData,
-      });
+      const response = await fetch('/api/amplify-video', { method: 'POST', body: formData });
+      console.log("📡 API response status:", response.status);
 
       const data = await response.json();
+      console.log("📦 Full API response:", data);
+
       if (!response.ok) throw new Error(data.error || 'Failed');
 
       setTranscription(data.transcription || 'No transcription available.');
       setResults(data.platforms || []);
+      console.log("✅ Results set in state — results panel should appear. Length:", (data.platforms || []).length);
     } catch (err: any) {
-      console.error(err);
+      console.error("❌ Amplify error:", err);
       setError(err.message || 'Failed to amplify video');
     } finally {
       setIsAmplifying(false);
@@ -177,7 +175,6 @@ export default function VideoRecorder() {
     setIsRecording(false);
   };
 
-  // Copy functions (same as before)
   const copyAllResults = () => {
     if (!results || results.length === 0) return;
     let text = "VIDEO AMPLIFICATION RESULTS\n\n";
@@ -200,7 +197,6 @@ export default function VideoRecorder() {
     alert(`✅ Copied ${result.platform}`);
   };
 
-  // Cleanup
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -216,37 +212,36 @@ export default function VideoRecorder() {
       </div>
 
       <div className="border border-white/10 bg-zinc-950 rounded-3xl p-8">
-        {/* LIVE PREVIEW (only while recording) */}
-        {isRecording && (
-          <div className="relative aspect-video bg-black rounded-2xl overflow-hidden mb-6">
-            <video
-              ref={liveVideoRef}
-              autoPlay
-              muted
-              playsInline
-              className="w-full h-full object-cover"
-            />
-            <div className="absolute top-4 right-4 bg-black/80 px-4 py-1 rounded-full text-red-500 font-mono flex items-center gap-2">
-              ● REC {Math.floor(recordingTime / 60)}:{(recordingTime % 60).toString().padStart(2, '0')}
-            </div>
+        {/* LIVE PREVIEW */}
+        <div className={`relative aspect-video bg-black rounded-2xl overflow-hidden mb-6 ${isRecording ? 'block' : 'hidden'}`}>
+          <video
+            ref={liveVideoRef}
+            autoPlay
+            muted
+            playsInline
+            className="w-full h-full object-cover"
+          />
+          {isRecording && (
+            <>
+              <div className="absolute top-4 right-4 bg-black/80 px-4 py-1 rounded-full text-red-500 font-mono flex items-center gap-2">
+                ● REC {Math.floor(recordingTime / 60)}:{(recordingTime % 60).toString().padStart(2, '0')}
+              </div>
+              <button
+                onClick={stopRecording}
+                className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-red-600 hover:bg-red-700 text-white px-12 py-5 rounded-3xl text-2xl font-bold flex items-center gap-4 shadow-2xl border-4 border-white/20"
+              >
+                <Square size={32} className="fill-current" /> STOP RECORDING
+              </button>
+            </>
+          )}
+        </div>
 
-            <button
-              onClick={stopRecording}
-              className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-red-600 hover:bg-red-700 text-white px-12 py-5 rounded-3xl text-2xl font-bold flex items-center gap-4 shadow-2xl border-4 border-white/20"
-            >
-              <Square size={32} className="fill-current" /> STOP RECORDING
-            </button>
-          </div>
-        )}
-
-        {/* RECORDED / UPLOADED VIDEO (only after recording or upload) */}
+        {/* RECORDED / UPLOADED VIDEO */}
         {videoUrl && !isRecording && (
           <div className="relative aspect-video bg-black rounded-2xl overflow-hidden mb-6">
             <video
-              ref={recordedVideoRef}
               src={videoUrl}
               controls
-              autoPlay
               className="w-full h-full object-cover"
             />
           </div>
@@ -279,7 +274,7 @@ export default function VideoRecorder() {
           onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
         />
 
-        {/* Amplify & Reset (only when video exists) */}
+        {/* Amplify & Reset */}
         {videoUrl && !isRecording && (
           <div className="space-y-6">
             <button
@@ -289,7 +284,6 @@ export default function VideoRecorder() {
             >
               {isAmplifying ? '⚡ Amplifying Video...' : '✨ Amplify Video for All Platforms'}
             </button>
-
             <button
               onClick={resetAll}
               className="w-full py-4 border border-white/20 rounded-2xl hover:bg-white/5 flex items-center justify-center gap-2"
@@ -302,12 +296,15 @@ export default function VideoRecorder() {
 
       {error && <div className="bg-red-950 border border-red-500/50 p-6 rounded-3xl text-red-300">{error}</div>}
 
-      {/* Results section (unchanged) */}
+      {/* Results - Platform boxes */}
       {results && results.length > 0 && (
         <div className="space-y-8">
           <div className="flex justify-between items-center">
-            <h2 className="text-3xl font-bold">Amplification Complete</h2>
-            <button onClick={copyAllResults} className="flex items-center gap-2 px-6 py-3 bg-white/10 hover:bg-white/20 rounded-2xl">
+            <h2 className="text-3xl font-bold">✅ Amplification Complete!</h2>
+            <button
+              onClick={copyAllResults}
+              className="flex items-center gap-2 px-6 py-3 bg-white/10 hover:bg-white/20 rounded-2xl"
+            >
               <Copy size={18} /> Copy All Results
             </button>
           </div>
