@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Sparkles, ArrowRight, CheckCircle, RefreshCw, LogOut, Clock, Upload, Copy, RotateCw, Share2, Video } from 'lucide-react';
+import { Sparkles, ArrowRight, CheckCircle, RefreshCw, LogOut, Clock, Upload, Copy, RotateCw, Share2, Video, Play } from 'lucide-react';
 import { supabase } from './supabase';
 import VideoRecorder from '@/components/VideoRecorder';
 
@@ -14,12 +14,14 @@ export default function Home() {
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(false);
-  const [history, setHistory] = useState<any[]>([]);
+  const [textHistory, setTextHistory] = useState<any[]>([]);
+  const [videoHistory, setVideoHistory] = useState<any[]>([]);
   const [showHistory, setShowHistory] = useState<boolean>(false);
+  const [activeHistoryTab, setActiveHistoryTab] = useState<'all' | 'text' | 'video'>('all');
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [isCopyingAll, setIsCopyingAll] = useState<boolean>(false);
   const [shareLink, setShareLink] = useState<string | null>(null);
-  const [activeMode, setActiveMode] = useState<'text' | 'video'>('text');
+  const [activeMode, setActiveMode] = useState<'text' | 'video'>('video');
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -34,17 +36,27 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (user) loadHistory();
+    if (user) loadHistories();
   }, [user]);
 
-  const loadHistory = async () => {
-    const { data } = await supabase
+  const loadHistories = async () => {
+    if (!user) return;
+
+    // Text history
+    const { data: textData } = await supabase
       .from('content_history')
       .select('*')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false });
+    setTextHistory(textData || []);
 
-    setHistory(data || []);
+    // Video history
+    const { data: videoData } = await supabase
+      .from('video_history')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+    setVideoHistory(videoData || []);
   };
 
   const handleAuth = async () => {
@@ -111,7 +123,7 @@ export default function Home() {
           outputs: data.outputs
         });
 
-      loadHistory();
+      loadHistories();
     } catch {
       showToast("Failed to generate content.", true);
     } finally {
@@ -147,7 +159,7 @@ export default function Home() {
           outputs: data.outputs
         });
 
-      loadHistory();
+      loadHistories();
     } catch {
       showToast("Failed to process file.", true);
     } finally {
@@ -492,35 +504,79 @@ export default function Home() {
               )}
             </div>
 
-            {/* History Sidebar */}
+            {/* Unified History Sidebar */}
             {showHistory && (
-              <div className="w-96 bg-zinc-900 border-l border-white/10 p-6 overflow-auto h-screen">
-                <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
-                  <Clock className="w-5 h-5" /> History
-                </h3>
-                {history.length === 0 ? (
-                  <p className="text-zinc-500">No history yet.</p>
-                ) : (
-                  <div className="space-y-4">
-                    {history.map((item, index) => (
+              <div className="w-96 bg-zinc-950 border-l border-white/10 p-6 overflow-auto h-screen sticky top-0">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-2xl font-bold">History</h3>
+                  <button onClick={() => setShowHistory(false)} className="text-zinc-400 hover:text-white">✕</button>
+                </div>
+
+                <div className="flex gap-2 mb-6 bg-zinc-900 p-1 rounded-2xl">
+                  {(['all', 'text', 'video'] as const).map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => setActiveHistoryTab(tab)}
+                      className={`flex-1 py-3 rounded-xl text-sm font-medium transition-all ${
+                        activeHistoryTab === tab ? 'bg-violet-600 text-white' : 'hover:bg-white/5'
+                      }`}
+                    >
+                      {tab === 'all' ? 'All' : tab === 'text' ? 'Text' : 'Videos'}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Video History */}
+                {(activeHistoryTab === 'all' || activeHistoryTab === 'video') && (
+                  <div className="mb-10">
+                    <h4 className="uppercase text-xs tracking-widest text-zinc-500 mb-4 flex items-center gap-2">
+                      <Video className="w-4 h-4" /> Videos
+                    </h4>
+                    {videoHistory.length === 0 && <p className="text-zinc-500 py-8 text-center">No videos yet</p>}
+                    {videoHistory.map((vid: any) => (
+                      <div key={vid.id} className="bg-zinc-900 rounded-2xl overflow-hidden mb-6 group">
+                        <div className="relative aspect-video bg-black">
+                          <video src={vid.video_url} className="w-full h-full object-cover" controls />
+                        </div>
+                        <div className="p-4">
+                          <p className="font-medium text-sm line-clamp-1">{vid.file_name}</p>
+                          <p className="text-xs text-zinc-500 mt-1">
+                            {new Date(vid.created_at).toLocaleDateString()}
+                          </p>
+                          {vid.transcription && (
+                            <p className="text-xs text-zinc-400 mt-3 line-clamp-2">{vid.transcription}</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Text History */}
+                {(activeHistoryTab === 'all' || activeHistoryTab === 'text') && textHistory.length > 0 && (
+                  <div>
+                    <h4 className="uppercase text-xs tracking-widest text-zinc-500 mb-4">Text Content</h4>
+                    {textHistory.map((item) => (
                       <div 
-                        key={index} 
+                        key={item.id} 
                         onClick={() => { 
                           setContent(item.original_content); 
                           setShowHistory(false); 
                           window.scrollTo({ top: 0, behavior: 'smooth' }); 
                         }}
-                        className="border border-white/10 rounded-2xl p-4 text-sm cursor-pointer hover:border-violet-400 hover:bg-zinc-800/50 transition-all group"
+                        className="bg-zinc-900 rounded-2xl p-5 mb-4 cursor-pointer hover:bg-zinc-800"
                       >
-                        <p className="text-zinc-500 text-xs mb-2">
-                          {new Date(item.created_at).toLocaleDateString()} • {new Date(item.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                        </p>
-                        <p className="line-clamp-3 text-zinc-400 group-hover:text-zinc-200 transition">
-                          {item.original_content}
+                        <p className="line-clamp-3 text-sm text-zinc-300">{item.original_content}</p>
+                        <p className="text-xs text-zinc-500 mt-3">
+                          {new Date(item.created_at).toLocaleDateString()}
                         </p>
                       </div>
                     ))}
                   </div>
+                )}
+
+                {videoHistory.length === 0 && textHistory.length === 0 && (
+                  <p className="text-center py-20 text-zinc-500">Your amplified content will appear here</p>
                 )}
               </div>
             )}

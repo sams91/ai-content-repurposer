@@ -7,38 +7,37 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import { promisify } from 'util';
+import { createClient } from '@supabase/supabase-js';
 
 const MAX_SIZE_BYTES = 2 * 1024 * 1024 * 1024; // 2GB
 const execFilePromise = promisify(execFile);
+
+const supabaseServer = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const videoFile = formData.get('video') as File | null;
+    const userId = formData.get('user_id') as string | null;
 
-    if (!videoFile) {
-      return NextResponse.json({ error: "No video file provided" }, { status: 400 });
-    }
-
-    if (!videoFile.type.startsWith('video/')) {
-      return NextResponse.json({ error: "File must be a video" }, { status: 400 });
-    }
-
-    if (videoFile.size > MAX_SIZE_BYTES) {
-      return NextResponse.json({ error: `Video file is too large (max 2GB)` }, { status: 400 });
-    }
+    if (!videoFile) return NextResponse.json({ error: "No video file provided" }, { status: 400 });
+    if (!videoFile.type.startsWith('video/')) return NextResponse.json({ error: "File must be a video" }, { status: 400 });
+    if (videoFile.size > MAX_SIZE_BYTES) return NextResponse.json({ error: `Video file is too large (max 2GB)` }, { status: 400 });
+    if (!userId) return NextResponse.json({ error: "User ID required" }, { status: 400 });
 
     const client = getAIClient();
     const visionModel = getVisionModel();
 
-    // === STEP 1: Server-side audio extraction + Whisper ===
+    // === STEP 1: Audio extraction + Whisper ===
     let transcription = "No speech detected or transcription failed.";
     let inputPath: string | null = null;
     let audioPath: string | null = null;
 
     try {
       const videoBuffer = Buffer.from(await videoFile.arrayBuffer());
-
       const tempDir = os.tmpdir();
       inputPath = path.join(tempDir, `input-${Date.now()}-${videoFile.name}`);
       audioPath = path.join(tempDir, `audio-${Date.now()}.mp3`);
@@ -47,12 +46,11 @@ export async function POST(request: NextRequest) {
 
       console.log(`🎥 Extracting audio from ${(videoFile.size / (1024 * 1024)).toFixed(1)} MB video...`);
 
-      // 64kbps MP3 — guaranteed <25 MB even for longer videos
       await execFilePromise('ffmpeg', [
         '-i', inputPath,
         '-vn',
         '-acodec', 'libmp3lame',
-        '-b:a', '64k',        // ← LOWER BITRATE = smaller file
+        '-b:a', '64k',
         '-ac', '1',
         '-ar', '16000',
         '-y',
@@ -63,9 +61,8 @@ export async function POST(request: NextRequest) {
       const audioMB = audioBuffer.length / (1024 * 1024);
       console.log(`✅ Audio extracted: ${audioMB.toFixed(2)} MB`);
 
-      // Safety net: if somehow still over limit, compress even harder
       if (audioMB > 24) {
-        console.warn("⚠️ Audio still >24 MB — re-compressing to 32kbps");
+        console.warn("⚠️ Re-compressing to 32kbps");
         await execFilePromise('ffmpeg', [
           '-i', audioPath,
           '-vn',
@@ -79,9 +76,8 @@ export async function POST(request: NextRequest) {
       }
 
       const whisper = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
       const transcriptionResponse = await whisper.audio.transcriptions.create({
-        file: new File([audioBuffer], 'audio.mp3', { type: 'audio/mpeg' }),
+        file: new File([await fs.readFile(audioPath)], 'audio.mp3', { type: 'audio/mpeg' }),
         model: "whisper-1",
         response_format: "verbose_json",
       });
@@ -95,7 +91,7 @@ export async function POST(request: NextRequest) {
       if (audioPath) await fs.unlink(audioPath).catch(() => {});
     }
 
-    // === STEP 2: Generate platform content (unchanged) ===
+    // === STEP 2: Generate platform content ===
     const prompt = `You are an expert short-form video strategist.
 
 Video Transcription:
@@ -124,30 +120,71 @@ Create highly engaging, platform-optimized content. Return clean JSON only:
       response_format: { type: "json_object" }
     });
 
-    let result: any = {};
+    let outputs: any = {};
     try {
-      result = JSON.parse(completion.choices[0].message.content || "{}");
+      outputs = JSON.parse(completion.choices[0].message.content || "{}");
     } catch (e) {
       console.error("Failed to parse AI response as JSON");
     }
 
+    // === STEP 3: Upload to Supabase Storage + Save to video_history ===
+    const fileExt = videoFile.name.split('.').pop() || 'mp4';
+    const fileName = `${userId}/video-${Date.now()}.${fileExt}`;
+
+    console.log(`📤 Uploading ${ (videoFile.size / (1024 * 1024)).toFixed(1) } MB video to Supabase Storage...`);
+
+    const { data: uploadData, error: uploadError } = await supabaseServer.storage
+      .from('videos')
+      .upload(fileName, videoFile, {
+        contentType: videoFile.type,
+        upsert: true,
+        cacheControl: '3600',
+      });
+
+    if (uploadError) {
+      console.error("Storage upload error:", uploadError);
+      throw new Error(`Storage upload failed: ${uploadError.message}`);
+    }
+
+    const { data: { publicUrl } } = supabaseServer.storage.from('videos').getPublicUrl(fileName);
+
+    // Save record
+    const { data: historyRecord, error: dbError } = await supabaseServer
+      .from('video_history')
+      .insert({
+        user_id: userId,
+        video_url: publicUrl,
+        file_name: videoFile.name,
+        transcription,
+        amplified_outputs: outputs,
+        duration_seconds: null,
+      })
+      .select('id')
+      .single();
+
+    if (dbError) throw new Error(`Database insert failed: ${dbError.message}`);
+
+    console.log(`✅ Video saved to history! ID: ${historyRecord.id}`);
+
     return NextResponse.json({
       success: true,
-      transcription: transcription,
-      outputs: result,
-      platforms: Object.entries(result).map(([platform, data]) => ({
+      transcription,
+      outputs,
+      platforms: Object.entries(outputs).map(([platform, data]: [string, any]) => ({
         platform: platform.toUpperCase(),
-        title: (data as any).title || (data as any).caption || "",
-        description: (data as any).description || "",
-        caption: (data as any).caption || (data as any).full_caption || (data as any).text || "",
-        hashtags: (data as any).hashtags ? (data as any).hashtags.join(" ") : "",
+        title: data.title || data.caption || "",
+        description: data.description || "",
+        caption: data.caption || data.full_caption || data.text || "",
+        hashtags: data.hashtags ? data.hashtags.join(" ") : "",
       })),
+      video_url: publicUrl,
+      video_id: historyRecord.id,
       provider: process.env.AI_PROVIDER || 'openai',
       model: visionModel,
     });
 
   } catch (error: any) {
-    console.error("Amplify Video Error:", error);
+    console.error("❌ Amplify Video Error:", error);
     return NextResponse.json({ error: error.message || "Failed to amplify video" }, { status: 500 });
   }
 }

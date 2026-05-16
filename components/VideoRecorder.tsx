@@ -1,9 +1,15 @@
 "use client";
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { RotateCcw, Copy } from 'lucide-react';
+import { RotateCcw, Copy, Square } from 'lucide-react';
+import { createClient } from '@supabase/supabase-js';
 
-const MAX_SIZE_MB = 2048; // 2GB
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+const MAX_SIZE_MB = 2048;
 
 interface PlatformResult {
   platform: string;
@@ -24,13 +30,32 @@ export default function VideoRecorder() {
   const [transcription, setTranscription] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Separate refs for live and recorded video
   const liveVideoRef = useRef<HTMLVideoElement>(null);
+  const recordedVideoRef = useRef<HTMLVideoElement>(null);
+
+  // Load user
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setCurrentUser(user);
+    };
+    getUser();
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_, session) => {
+      setCurrentUser(session?.user || null);
+    });
+
+    return () => listener.subscription.unsubscribe();
+  }, []);
 
   // ==================== RECORDING ====================
   const startRecording = async () => {
@@ -41,7 +66,7 @@ export default function VideoRecorder() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user' },
-        audio: true
+        audio: true,
       });
       streamRef.current = stream;
 
@@ -63,34 +88,28 @@ export default function VideoRecorder() {
         setVideoUrl(url);
         setVideoBlob(blob);
         setSelectedFile(null);
-        if (liveVideoRef.current) liveVideoRef.current.srcObject = null;
       };
 
-      mediaRecorder.start(1000); // Record in 1-second chunks
+      mediaRecorder.start(1000);
       setIsRecording(true);
 
       timerRef.current = setInterval(() => {
         setRecordingTime((prev) => prev + 1);
       }, 1000);
     } catch (err: any) {
-      setError('Failed to access camera or microphone. Please allow permissions.');
+      setError('Failed to access camera/microphone. Please allow permissions.');
     }
   };
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current) {
-      mediaRecorderRef.current.stop();
-    }
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-    }
+    if (mediaRecorderRef.current) mediaRecorderRef.current.stop();
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (streamRef.current) streamRef.current.getTracks().forEach(track => track.stop());
     setIsRecording(false);
   };
 
-  // ==================== UPLOAD ====================
-  const triggerFileUpload = () => {
-    fileInputRef.current?.click();
-  };
+  // ==================== FILE UPLOAD ====================
+  const triggerFileUpload = () => fileInputRef.current?.click();
 
   const handleFileSelect = useCallback((file: File) => {
     setError('');
@@ -98,7 +117,6 @@ export default function VideoRecorder() {
     setTranscription('');
 
     const sizeMB = file.size / (1024 * 1024);
-
     if (sizeMB > MAX_SIZE_MB) {
       setError(`Video file is too large (max 2GB)`);
       return;
@@ -108,17 +126,14 @@ export default function VideoRecorder() {
     const url = URL.createObjectURL(file);
     setVideoUrl(url);
     setVideoBlob(file);
-
-    if (sizeMB > 500) {
-      const estMin = Math.round(sizeMB / 100);
-      const estMax = Math.round(sizeMB / 50);
-      setError(`Large file (${sizeMB.toFixed(1)} MB). Upload + processing may take ${estMin}–${estMax} minutes.`);
-    }
   }, []);
 
   // ==================== AMPLIFY ====================
   const amplifyVideo = async () => {
-    if (!videoBlob) return;
+    if (!videoBlob || !currentUser) {
+      setError(!currentUser ? "Please log in to amplify videos" : "No video selected");
+      return;
+    }
 
     setIsAmplifying(true);
     setError('');
@@ -129,6 +144,7 @@ export default function VideoRecorder() {
       const formData = new FormData();
       const fileName = selectedFile?.name || `recording-${Date.now()}.webm`;
       formData.append('video', videoBlob, fileName);
+      formData.append('user_id', currentUser.id);
 
       const response = await fetch('/api/amplify-video', {
         method: 'POST',
@@ -136,16 +152,13 @@ export default function VideoRecorder() {
       });
 
       const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Amplification failed');
-      }
+      if (!response.ok) throw new Error(data.error || 'Failed');
 
       setTranscription(data.transcription || 'No transcription available.');
       setResults(data.platforms || []);
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'Failed to amplify video. Please try again.');
+      setError(err.message || 'Failed to amplify video');
     } finally {
       setIsAmplifying(false);
     }
@@ -153,9 +166,7 @@ export default function VideoRecorder() {
 
   const resetAll = () => {
     if (videoUrl) URL.revokeObjectURL(videoUrl);
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-    }
+    if (streamRef.current) streamRef.current.getTracks().forEach(track => track.stop());
     setVideoBlob(null);
     setVideoUrl(null);
     setSelectedFile(null);
@@ -166,12 +177,11 @@ export default function VideoRecorder() {
     setIsRecording(false);
   };
 
+  // Copy functions (same as before)
   const copyAllResults = () => {
     if (!results || results.length === 0) return;
-    
     let text = "VIDEO AMPLIFICATION RESULTS\n\n";
     if (transcription) text += `TRANSCRIPTION:\n${transcription}\n\n`;
-
     results.forEach(r => {
       text += `${r.platform}\n`;
       if (r.title) text += `Title: ${r.title}\n`;
@@ -180,7 +190,6 @@ export default function VideoRecorder() {
       if (r.hashtags) text += `Hashtags: ${r.hashtags}\n`;
       text += "\n";
     });
-
     navigator.clipboard.writeText(text);
     alert("✅ All results copied to clipboard!");
   };
@@ -191,7 +200,7 @@ export default function VideoRecorder() {
     alert(`✅ Copied ${result.platform}`);
   };
 
-  // Cleanup on unmount
+  // Cleanup
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -203,29 +212,47 @@ export default function VideoRecorder() {
     <div className="max-w-5xl mx-auto p-6 space-y-8">
       <div className="text-center">
         <h1 className="text-4xl font-bold mb-2">Video Amplifier</h1>
-        <p className="text-zinc-400">Record or upload → Get optimized content for all platforms</p>
+        <p className="text-zinc-400">Record or upload → Optimized content for all platforms</p>
       </div>
 
-      {/* Main Upload / Record Area */}
       <div className="border border-white/10 bg-zinc-950 rounded-3xl p-8">
-        {/* Live Camera Preview */}
-        <div className="relative aspect-video bg-black rounded-2xl overflow-hidden mb-6">
-          <video
-            ref={liveVideoRef}
-            autoPlay
-            muted
-            playsInline
-            className="w-full h-full object-cover"
-            style={{ display: isRecording ? 'block' : 'none' }}
-          />
-          {isRecording && (
+        {/* LIVE PREVIEW (only while recording) */}
+        {isRecording && (
+          <div className="relative aspect-video bg-black rounded-2xl overflow-hidden mb-6">
+            <video
+              ref={liveVideoRef}
+              autoPlay
+              muted
+              playsInline
+              className="w-full h-full object-cover"
+            />
             <div className="absolute top-4 right-4 bg-black/80 px-4 py-1 rounded-full text-red-500 font-mono flex items-center gap-2">
               ● REC {Math.floor(recordingTime / 60)}:{(recordingTime % 60).toString().padStart(2, '0')}
             </div>
-          )}
-        </div>
 
-        {/* Controls */}
+            <button
+              onClick={stopRecording}
+              className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-red-600 hover:bg-red-700 text-white px-12 py-5 rounded-3xl text-2xl font-bold flex items-center gap-4 shadow-2xl border-4 border-white/20"
+            >
+              <Square size={32} className="fill-current" /> STOP RECORDING
+            </button>
+          </div>
+        )}
+
+        {/* RECORDED / UPLOADED VIDEO (only after recording or upload) */}
+        {videoUrl && !isRecording && (
+          <div className="relative aspect-video bg-black rounded-2xl overflow-hidden mb-6">
+            <video
+              ref={recordedVideoRef}
+              src={videoUrl}
+              controls
+              autoPlay
+              className="w-full h-full object-cover"
+            />
+          </div>
+        )}
+
+        {/* Initial controls */}
         {!videoUrl && !isRecording && (
           <div className="flex flex-col items-center gap-4 py-12">
             <button
@@ -234,9 +261,7 @@ export default function VideoRecorder() {
             >
               🎥 Start Recording
             </button>
-
             <div className="text-zinc-500 my-2">— or —</div>
-
             <button
               onClick={triggerFileUpload}
               className="w-full max-w-md py-6 bg-violet-600 hover:bg-violet-700 rounded-3xl text-xl font-semibold flex items-center justify-center gap-3"
@@ -254,21 +279,15 @@ export default function VideoRecorder() {
           onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
         />
 
-        {/* Video Preview + Amplify Button */}
+        {/* Amplify & Reset (only when video exists) */}
         {videoUrl && !isRecording && (
           <div className="space-y-6">
-            <video src={videoUrl} controls className="w-full rounded-2xl bg-black" />
-            
             <button
               onClick={amplifyVideo}
               disabled={isAmplifying}
-              className="w-full py-6 bg-gradient-to-r from-violet-600 to-fuchsia-600 rounded-3xl text-xl font-semibold disabled:opacity-70 flex items-center justify-center gap-3"
+              className="w-full py-6 bg-gradient-to-r from-violet-600 to-fuchsia-600 rounded-3xl text-xl font-semibold disabled:opacity-70"
             >
-              {isAmplifying ? (
-                <>⚡ Amplifying Video... (this may take a few minutes)</>
-              ) : (
-                <>✨ Amplify Video for All Platforms</>
-              )}
+              {isAmplifying ? '⚡ Amplifying Video...' : '✨ Amplify Video for All Platforms'}
             </button>
 
             <button
@@ -281,33 +300,14 @@ export default function VideoRecorder() {
         )}
       </div>
 
-      {/* Status Messages */}
-      {isAmplifying && (
-        <div className="bg-zinc-900 border border-violet-500/30 p-8 rounded-3xl text-center">
-          <div className="animate-pulse text-5xl mb-4">⏳</div>
-          <p className="text-xl font-medium">Processing your video...</p>
-          <p className="text-zinc-400 mt-3">
-            Transcription + platform optimization in progress.<br />
-            This usually takes 1–8 minutes.
-          </p>
-        </div>
-      )}
+      {error && <div className="bg-red-950 border border-red-500/50 p-6 rounded-3xl text-red-300">{error}</div>}
 
-      {error && (
-        <div className="bg-red-950 border border-red-500/50 p-6 rounded-3xl text-red-300">
-          {error}
-        </div>
-      )}
-
-      {/* Results */}
+      {/* Results section (unchanged) */}
       {results && results.length > 0 && (
         <div className="space-y-8">
           <div className="flex justify-between items-center">
             <h2 className="text-3xl font-bold">Amplification Complete</h2>
-            <button
-              onClick={copyAllResults}
-              className="flex items-center gap-2 px-6 py-3 bg-white/10 hover:bg-white/20 rounded-2xl"
-            >
+            <button onClick={copyAllResults} className="flex items-center gap-2 px-6 py-3 bg-white/10 hover:bg-white/20 rounded-2xl">
               <Copy size={18} /> Copy All Results
             </button>
           </div>
@@ -315,9 +315,7 @@ export default function VideoRecorder() {
           {transcription && (
             <div className="bg-zinc-900 rounded-3xl p-8">
               <h3 className="text-xl font-semibold mb-4">📝 Full Transcription</h3>
-              <p className="text-zinc-300 whitespace-pre-wrap leading-relaxed max-h-96 overflow-auto">
-                {transcription}
-              </p>
+              <p className="text-zinc-300 whitespace-pre-wrap leading-relaxed max-h-96 overflow-auto">{transcription}</p>
             </div>
           )}
 
@@ -326,12 +324,7 @@ export default function VideoRecorder() {
               <div key={index} className="bg-zinc-900 rounded-3xl p-8 border border-white/10">
                 <div className="flex justify-between mb-6">
                   <h3 className="text-2xl font-bold text-violet-400">{result.platform}</h3>
-                  <button
-                    onClick={() => copyPlatform(result)}
-                    className="px-5 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-sm"
-                  >
-                    Copy
-                  </button>
+                  <button onClick={() => copyPlatform(result)} className="px-5 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-sm">Copy</button>
                 </div>
 
                 {result.title && (
@@ -340,21 +333,18 @@ export default function VideoRecorder() {
                     <p className="font-medium">{result.title}</p>
                   </div>
                 )}
-
                 {result.description && (
                   <div className="mb-6">
                     <p className="text-xs uppercase tracking-widest text-zinc-500 mb-1">Description</p>
                     <p className="text-zinc-300">{result.description}</p>
                   </div>
                 )}
-
                 {(result.caption || result.text) && (
                   <div className="mb-6">
                     <p className="text-xs uppercase tracking-widest text-zinc-500 mb-1">Caption</p>
                     <p className="text-zinc-300">{result.caption || result.text}</p>
                   </div>
                 )}
-
                 {result.hashtags && (
                   <div>
                     <p className="text-xs uppercase tracking-widest text-zinc-500 mb-1">Hashtags</p>
