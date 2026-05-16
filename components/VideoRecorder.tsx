@@ -20,7 +20,7 @@ interface PlatformResult {
   text?: string;
 }
 
-export default function VideoRecorder() {
+export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?: () => void }) {
   const [videoBlob, setVideoBlob] = useState<Blob | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
@@ -154,6 +154,9 @@ export default function VideoRecorder() {
       setTranscription(data.transcription || 'No transcription available.');
       setResults(data.platforms || []);
       console.log("✅ Results set in state — results panel should appear. Length:", (data.platforms || []).length);
+
+      // === REFRESH HISTORY IN SIDEBAR ===
+      onAmplifySuccess?.();
     } catch (err: any) {
       console.error("❌ Amplify error:", err);
       setError(err.message || 'Failed to amplify video');

@@ -59,6 +59,10 @@ export default function Home() {
     setVideoHistory(videoData || []);
   };
 
+  const refreshHistory = () => {
+    if (user) loadHistories();
+  };
+
   const handleAuth = async () => {
     setIsAuthLoading(true);
     try {
@@ -499,7 +503,7 @@ export default function Home() {
               {/* Video Mode */}
               {activeMode === 'video' && (
                 <div className="max-w-4xl mx-auto">
-                  <VideoRecorder />
+                  <VideoRecorder onAmplifySuccess={refreshHistory} />
                 </div>
               )}
             </div>
