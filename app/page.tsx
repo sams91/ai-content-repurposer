@@ -122,7 +122,7 @@ export default function Home() {
     }
   };
 
-  // NEW: Smart Clipping
+  // Smart Clipping
   const generateSmartClips = async (videoUrl: string, videoId: string, fileName: string) => {
     setGeneratingClipsFor(videoId);
     try {
@@ -696,7 +696,7 @@ export default function Home() {
               )}
             </div>
 
-            {/* History sidebar - FULLY UPGRADED + SMART CLIPS */}
+            {/* History sidebar */}
             {showHistory && (
               <div className="w-96 bg-zinc-950 border-l border-white/10 p-6 overflow-auto h-screen sticky top-0">
                 <div className="flex justify-between items-center mb-6">
@@ -706,7 +706,6 @@ export default function Home() {
                   <button onClick={() => setShowHistory(false)} className="text-zinc-400 hover:text-white">✕</button>
                 </div>
 
-                {/* Search bar */}
                 <div className="relative mb-6">
                   <Search className="absolute left-4 top-3.5 w-4 h-4 text-zinc-400" />
                   <input
@@ -718,7 +717,6 @@ export default function Home() {
                   />
                 </div>
 
-                {/* Tabs */}
                 <div className="flex gap-2 mb-6 bg-zinc-900 p-1 rounded-3xl">
                   {(['all', 'text', 'video'] as const).map((tab) => (
                     <button
@@ -733,7 +731,6 @@ export default function Home() {
                   ))}
                 </div>
 
-                {/* Video items with Smart Clips */}
                 {(activeHistoryTab === 'all' || activeHistoryTab === 'video') && (
                   <div className="mb-10">
                     <h4 className="uppercase text-xs tracking-widest text-zinc-500 mb-4 flex items-center gap-2">
@@ -744,7 +741,6 @@ export default function Home() {
                     )}
                     {filteredVideo.map((vid: any) => (
                       <div key={vid.id} className="bg-zinc-900 rounded-3xl overflow-hidden mb-6 group">
-                        {/* Thumbnail + modal trigger */}
                         <div 
                           className="relative aspect-video bg-black cursor-pointer"
                           onClick={() => setPreviewVideo({ url: vid.video_url, name: vid.file_name || 'Video' })}
@@ -777,7 +773,6 @@ export default function Home() {
                           {vid.transcription && (
                             <p className="text-xs text-zinc-400 mt-3 line-clamp-2">{vid.transcription}</p>
                           )}
-                          {/* Quick formatted downloads */}
                           <div className="mt-4 grid grid-cols-2 gap-2">
                             <button 
                               onClick={() => optimizeAndDownload(vid.video_url, 'TikTok', vid.file_name)}
@@ -804,7 +799,6 @@ export default function Home() {
                               <Download className="w-3 h-3" /> LinkedIn
                             </button>
                           </div>
-                          {/* Smart Clips button */}
                           <button
                             onClick={() => generateSmartClips(vid.video_url, vid.id, vid.file_name)}
                             disabled={generatingClipsFor === vid.id}
@@ -822,7 +816,6 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* Text items */}
                 {(activeHistoryTab === 'all' || activeHistoryTab === 'text') && (
                   <div>
                     <h4 className="uppercase text-xs tracking-widest text-zinc-500 mb-4">Text Content</h4>
@@ -1005,7 +998,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* Smart Clips Modal */}
+      {/* Smart Clips Modal - UPDATED DOWNLOAD HANDLER */}
       {clipModal && (
         <div 
           className="fixed inset-0 bg-black/90 flex items-center justify-center z-[10000] p-4"
@@ -1016,7 +1009,7 @@ export default function Home() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-6 border-b border-white/10 flex items-center justify-between">
-              <h3 className="text-xl font-bold">Smart Clips for {clipModal.clips[0]?.fileName || 'this video'}</h3>
+              <h3 className="text-xl font-bold">Smart Clips for this video</h3>
               <button onClick={() => setClipModal(null)} className="text-zinc-400 hover:text-white">✕</button>
             </div>
             <div className="p-6 space-y-6 max-h-[70vh] overflow-auto">
@@ -1031,12 +1024,20 @@ export default function Home() {
                       <p className="text-xs text-zinc-400 line-clamp-4 mt-2">{clip.reason}</p>
                     </div>
                     <button
-                      onClick={() => {
-                        const a = document.createElement('a');
-                        a.href = clip.url;
-                        a.download = clip.filename;
-                        a.click();
-                        showToast(`Downloaded ${clip.duration}s clip!`);
+                      onClick={async () => {
+                        try {
+                          const response = await fetch(clip.url);
+                          const blob = await response.blob();
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = clip.filename;
+                          a.click();
+                          URL.revokeObjectURL(url);
+                          showToast(`Downloaded ${clip.duration}s clip!`);
+                        } catch {
+                          showToast('Download failed', true);
+                        }
                       }}
                       className="mt-auto bg-white/10 hover:bg-white/20 py-3 rounded-2xl text-sm flex items-center justify-center gap-2"
                     >

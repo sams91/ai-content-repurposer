@@ -1,18 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import ffmpeg from 'fluent-ffmpeg';
-import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import os from 'os';
 import { createClient } from '@supabase/supabase-js';
 
-ffmpeg.setFfmpegPath(ffmpegInstaller.path);
-
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
+
+const TEMP_DIR = os.tmpdir();
 
 export async function POST(req: NextRequest) {
   let inputPath = '';
@@ -24,15 +23,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing videoUrl or userId' }, { status: 400 });
     }
 
-    const TEMP_DIR = os.tmpdir();
+    // Ensure temp folder exists (same as your working optimize-video route)
     fs.mkdirSync(TEMP_DIR, { recursive: true });
 
+    console.log('🔄 Generating Smart Clips for:', fileName);
+
     // Download original video
-    const videoRes = await fetch(videoUrl);
-    if (!videoRes.ok) throw new Error('Failed to download video');
-    const buffer = Buffer.from(await videoRes.arrayBuffer());
+    const videoResponse = await fetch(videoUrl);
+    if (!videoResponse.ok) throw new Error('Failed to download video');
+
+    const arrayBuffer = await videoResponse.arrayBuffer();
     inputPath = path.join(TEMP_DIR, `${uuidv4()}.mp4`);
-    fs.writeFileSync(inputPath, buffer);
+    fs.writeFileSync(inputPath, Buffer.from(arrayBuffer));
 
     const clips = [];
     const durations = [15, 30, 60];
@@ -41,8 +43,8 @@ export async function POST(req: NextRequest) {
       const clipPath = path.join(TEMP_DIR, `${uuidv4()}-${duration}s.mp4`);
       tempClips.push(clipPath);
 
-      // For first version we take a simple hook from the middle (future: use Whisper timestamps)
-      const startTime = 10; // seconds — can be improved later
+      // Simple hook from middle of video (future version will use Whisper timestamps for smarter detection)
+      const startTime = 10;
 
       await new Promise((resolve, reject) => {
         ffmpeg(inputPath)
@@ -63,8 +65,8 @@ export async function POST(req: NextRequest) {
       const clipBuffer = fs.readFileSync(clipPath);
       const clipFilename = `clips/${userId}/${videoId}-${duration}s-${uuidv4()}.mp4`;
 
-      // Upload to Supabase storage
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      // Upload to Supabase storage (same bucket as your videos)
+      const { error: uploadError } = await supabase.storage
         .from('videos')
         .upload(clipFilename, clipBuffer, {
           contentType: 'video/mp4',
@@ -80,7 +82,7 @@ export async function POST(req: NextRequest) {
       clips.push({
         duration,
         url: publicUrl,
-        filename: `${fileName.split('.')[0] || 'clip'}-smartclip-${duration}s.mp4`,
+        filename: `${fileName ? fileName.split('.')[0] : 'clip'}-smartclip-${duration}s.mp4`,
         reason: `AI-detected best ${duration}s hook`
       });
     }
@@ -90,7 +92,7 @@ export async function POST(req: NextRequest) {
     console.error('Smart Clip error:', err);
     return NextResponse.json({ error: err.message || 'Failed to generate clips' }, { status: 500 });
   } finally {
-    // Cleanup
+    // Safe cleanup (same as your working optimize-video route)
     if (inputPath && fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
     tempClips.forEach(p => {
       if (fs.existsSync(p)) fs.unlinkSync(p);
