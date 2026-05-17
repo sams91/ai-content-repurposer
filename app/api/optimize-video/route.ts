@@ -1,4 +1,3 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import ffmpeg from 'fluent-ffmpeg';
 import fs from 'fs';
@@ -6,30 +5,25 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import os from 'os';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
 const TEMP_DIR = os.tmpdir();
 
 export async function POST(req: NextRequest) {
   let inputPath = '';
   let outPath = '';
   try {
-    const { video_url, platform, user_id } = await req.json();
+    const { videoUrl, platform, originalFileName } = await req.json();
 
-    if (!video_url || !platform || !user_id) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    if (!videoUrl || !platform) {
+      return NextResponse.json({ error: 'Missing videoUrl or platform' }, { status: 400 });
     }
 
     // Ensure temp folder exists (fixes Windows ENOENT)
     fs.mkdirSync(TEMP_DIR, { recursive: true });
 
-    console.log('🔄 Optimizing for:', platform);
+    console.log('🔄 Optimizing for:', platform, '→', originalFileName);
 
     // Download from public URL
-    const videoResponse = await fetch(video_url);
+    const videoResponse = await fetch(videoUrl);
     if (!videoResponse.ok) throw new Error('Failed to download video');
 
     const arrayBuffer = await videoResponse.arrayBuffer();
@@ -38,10 +32,10 @@ export async function POST(req: NextRequest) {
 
     // Platform settings
     let width = 1080, height = 1920, bitrate = '2500k';
-    if (['youtube', 'linkedin', 'rumble'].includes(platform)) {
+    if (['youtube', 'linkedin', 'rumble'].includes(platform.toLowerCase())) {
       width = 1920; height = 1080; bitrate = '5000k';
     }
-    if (['instagram', 'threads'].includes(platform)) {
+    if (['instagram', 'threads'].includes(platform.toLowerCase())) {
       width = 1080; height = 1080; bitrate = '3500k';
     }
 
@@ -62,23 +56,22 @@ export async function POST(req: NextRequest) {
         .save(outPath);
     });
 
-    // Upload optimized MP4
-    const optimizedName = `optimized-${uuidv4()}-${platform}.mp4`;
-    await supabase.storage.from('videos').upload(optimizedName, fs.readFileSync(outPath), {
-      contentType: 'video/mp4',
-      upsert: true
-    });
+    // Read the optimized file and send as direct download
+    const optimizedBuffer = fs.readFileSync(outPath);
 
-    const { data: { publicUrl } } = supabase.storage.from('videos').getPublicUrl(optimizedName);
+    const downloadName = originalFileName 
+      ? `${originalFileName.split('.')[0]}-${platform.toLowerCase()}.mp4`
+      : `optimized-${platform.toLowerCase()}.mp4`;
 
-    return NextResponse.json({
-      success: true,
-      optimized_url: publicUrl,
-      message: `✅ Optimized for ${platform.toUpperCase()}`
+    return new NextResponse(optimizedBuffer, {
+      headers: {
+        'Content-Type': 'video/mp4',
+        'Content-Disposition': `attachment; filename="${downloadName}"`,
+      },
     });
   } catch (err: any) {
     console.error('Optimize error:', err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: err.message || 'Optimization failed' }, { status: 500 });
   } finally {
     // Safe cleanup
     if (inputPath && fs.existsSync(inputPath)) fs.unlinkSync(inputPath);

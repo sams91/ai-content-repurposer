@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Sparkles, ArrowRight, CheckCircle, RefreshCw, LogOut, Clock, Upload, Copy, RotateCw, Share2, Video, Play, Zap, Send, HelpCircle } from 'lucide-react';
+import { Sparkles, ArrowRight, CheckCircle, RefreshCw, LogOut, Clock, Upload, Copy, RotateCw, Share2, Video, Play, Zap, Send, HelpCircle, Trash2, Search, Download } from 'lucide-react';
 import { supabase } from './supabase';
 import VideoRecorder from '@/components/VideoRecorder';
+import { formatDistanceToNow } from 'date-fns';
 
 export default function Home() {
   const [content, setContent] = useState<string>('');
@@ -34,6 +35,15 @@ export default function Home() {
   const [textConnectedAccounts, setTextConnectedAccounts] = useState<any[]>([]);
   const [showTextZernioModal, setShowTextZernioModal] = useState(false);
   const [selectedTextAccountId, setSelectedTextAccountId] = useState('');
+
+  // History polish states
+  const [historySearch, setHistorySearch] = useState<string>('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [previewVideo, setPreviewVideo] = useState<{ url: string; name: string } | null>(null);
+
+  // Smart Clipping states
+  const [generatingClipsFor, setGeneratingClipsFor] = useState<string | null>(null);
+  const [clipModal, setClipModal] = useState<{ videoId: string; clips: any[] } | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -73,6 +83,67 @@ export default function Home() {
     if (user) loadHistories();
   };
 
+  const handleAmplifySuccess = () => {
+    refreshHistory();
+  };
+
+  const deleteHistoryItem = async (id: string, type: 'text' | 'video') => {
+    if (!user || !confirm(`Delete this ${type} item forever?`)) return;
+    setDeletingId(id);
+    const table = type === 'text' ? 'content_history' : 'video_history';
+    const { error } = await supabase.from(table).delete().eq('id', id);
+    if (error) {
+      showToast('Delete failed', true);
+    } else {
+      showToast('Item deleted');
+      loadHistories();
+    }
+    setDeletingId(null);
+  };
+
+  const optimizeAndDownload = async (videoUrl: string, platform: string, fileName: string) => {
+    try {
+      const response = await fetch('/api/optimize-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoUrl, platform, originalFileName: fileName }),
+      });
+      if (!response.ok) throw new Error('Optimize failed');
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${fileName.split('.')[0]}-${platform.toLowerCase()}.mp4`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast(`Downloaded optimized for ${platform}!`);
+    } catch {
+      showToast('Download failed', true);
+    }
+  };
+
+  // NEW: Smart Clipping
+  const generateSmartClips = async (videoUrl: string, videoId: string, fileName: string) => {
+    setGeneratingClipsFor(videoId);
+    try {
+      const response = await fetch('/api/smart-clip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoUrl, videoId, fileName, userId: user.id }),
+      });
+      const data = await response.json();
+      if (data.clips) {
+        setClipModal({ videoId, clips: data.clips });
+      } else {
+        showToast(data.error || 'Failed to generate clips', true);
+      }
+    } catch {
+      showToast('Smart Clipping failed', true);
+    } finally {
+      setGeneratingClipsFor(null);
+    }
+  };
+
   const saveZernioKey = async () => {
     if (!user || !zernioApiKeyInput.trim()) {
       alert('Please enter your Zernio API key');
@@ -95,7 +166,6 @@ export default function Home() {
     }
   };
 
-  // Fetch connected accounts for Text Mode
   const fetchTextConnectedAccounts = async () => {
     if (!user) return;
     try {
@@ -341,6 +411,13 @@ export default function Home() {
       setIsProcessing(false);
     }
   };
+
+  const filteredText = textHistory.filter(item =>
+    item.original_content?.toLowerCase().includes(historySearch.toLowerCase())
+  );
+  const filteredVideo = videoHistory.filter(item =>
+    (item.file_name || item.transcription || '').toLowerCase().includes(historySearch.toLowerCase())
+  );
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white relative overflow-hidden">
@@ -614,25 +691,40 @@ export default function Home() {
               {/* VIDEO MODE */}
               {activeMode === 'video' && (
                 <div className="max-w-4xl mx-auto">
-                  <VideoRecorder onAmplifySuccess={refreshHistory} />
+                  <VideoRecorder onAmplifySuccess={handleAmplifySuccess} />
                 </div>
               )}
             </div>
 
-            {/* History sidebar */}
+            {/* History sidebar - FULLY UPGRADED + SMART CLIPS */}
             {showHistory && (
               <div className="w-96 bg-zinc-950 border-l border-white/10 p-6 overflow-auto h-screen sticky top-0">
                 <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-2xl font-bold">History</h3>
+                  <h3 className="text-2xl font-bold flex items-center gap-2">
+                    <Clock className="w-5 h-5" /> History
+                  </h3>
                   <button onClick={() => setShowHistory(false)} className="text-zinc-400 hover:text-white">✕</button>
                 </div>
 
-                <div className="flex gap-2 mb-6 bg-zinc-900 p-1 rounded-2xl">
+                {/* Search bar */}
+                <div className="relative mb-6">
+                  <Search className="absolute left-4 top-3.5 w-4 h-4 text-zinc-400" />
+                  <input
+                    type="text"
+                    placeholder="Search history..."
+                    value={historySearch}
+                    onChange={(e) => setHistorySearch(e.target.value)}
+                    className="w-full bg-zinc-900 border border-white/10 rounded-3xl pl-11 py-3 text-sm focus:outline-none focus:border-violet-400"
+                  />
+                </div>
+
+                {/* Tabs */}
+                <div className="flex gap-2 mb-6 bg-zinc-900 p-1 rounded-3xl">
                   {(['all', 'text', 'video'] as const).map((tab) => (
                     <button
                       key={tab}
                       onClick={() => setActiveHistoryTab(tab)}
-                      className={`flex-1 py-3 rounded-xl text-sm font-medium transition-all ${
+                      className={`flex-1 py-3 rounded-3xl text-sm font-medium transition-all ${
                         activeHistoryTab === tab ? 'bg-violet-600 text-white' : 'hover:bg-white/5'
                       }`}
                     >
@@ -641,35 +733,103 @@ export default function Home() {
                   ))}
                 </div>
 
+                {/* Video items with Smart Clips */}
                 {(activeHistoryTab === 'all' || activeHistoryTab === 'video') && (
                   <div className="mb-10">
                     <h4 className="uppercase text-xs tracking-widest text-zinc-500 mb-4 flex items-center gap-2">
                       <Video className="w-4 h-4" /> Videos
                     </h4>
-                    {videoHistory.length === 0 && <p className="text-zinc-500 py-8 text-center">No videos yet</p>}
-                    {videoHistory.map((vid: any) => (
-                      <div key={vid.id} className="bg-zinc-900 rounded-2xl overflow-hidden mb-6 group">
-                        <div className="relative aspect-video bg-black">
-                          <video src={vid.video_url} className="w-full h-full object-cover" controls />
+                    {filteredVideo.length === 0 && videoHistory.length > 0 && (
+                      <p className="text-zinc-500 py-8 text-center">No matching videos</p>
+                    )}
+                    {filteredVideo.map((vid: any) => (
+                      <div key={vid.id} className="bg-zinc-900 rounded-3xl overflow-hidden mb-6 group">
+                        {/* Thumbnail + modal trigger */}
+                        <div 
+                          className="relative aspect-video bg-black cursor-pointer"
+                          onClick={() => setPreviewVideo({ url: vid.video_url, name: vid.file_name || 'Video' })}
+                        >
+                          <img 
+                            src={vid.thumbnail_url || vid.video_url} 
+                            alt="" 
+                            className="w-full h-full object-cover" 
+                          />
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/40 group-hover:bg-black/30 transition-all">
+                            <Play className="w-12 h-12 text-white drop-shadow-lg" />
+                          </div>
                         </div>
                         <div className="p-4">
-                          <p className="font-medium text-sm line-clamp-1">{vid.file_name}</p>
-                          <p className="text-xs text-zinc-500 mt-1">
-                            {new Date(vid.created_at).toLocaleDateString()}
-                          </p>
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <p className="font-medium text-sm line-clamp-1">{vid.file_name || 'Recorded video'}</p>
+                              <p className="text-xs text-zinc-500">
+                                {formatDistanceToNow(new Date(vid.created_at), { addSuffix: true })}
+                              </p>
+                            </div>
+                            <button 
+                              onClick={() => deleteHistoryItem(vid.id, 'video')} 
+                              disabled={deletingId === vid.id}
+                              className="text-red-400 hover:text-red-500 transition"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                           {vid.transcription && (
                             <p className="text-xs text-zinc-400 mt-3 line-clamp-2">{vid.transcription}</p>
                           )}
+                          {/* Quick formatted downloads */}
+                          <div className="mt-4 grid grid-cols-2 gap-2">
+                            <button 
+                              onClick={() => optimizeAndDownload(vid.video_url, 'TikTok', vid.file_name)}
+                              className="bg-white/10 hover:bg-white/20 text-xs py-2 rounded-2xl flex items-center justify-center gap-1"
+                            >
+                              <Download className="w-3 h-3" /> TikTok/Reels
+                            </button>
+                            <button 
+                              onClick={() => optimizeAndDownload(vid.video_url, 'YouTube', vid.file_name)}
+                              className="bg-white/10 hover:bg-white/20 text-xs py-2 rounded-2xl flex items-center justify-center gap-1"
+                            >
+                              <Download className="w-3 h-3" /> YouTube
+                            </button>
+                            <button 
+                              onClick={() => optimizeAndDownload(vid.video_url, 'Instagram', vid.file_name)}
+                              className="bg-white/10 hover:bg-white/20 text-xs py-2 rounded-2xl flex items-center justify-center gap-1"
+                            >
+                              <Download className="w-3 h-3" /> Instagram
+                            </button>
+                            <button 
+                              onClick={() => optimizeAndDownload(vid.video_url, 'LinkedIn', vid.file_name)}
+                              className="bg-white/10 hover:bg-white/20 text-xs py-2 rounded-2xl flex items-center justify-center gap-1"
+                            >
+                              <Download className="w-3 h-3" /> LinkedIn
+                            </button>
+                          </div>
+                          {/* Smart Clips button */}
+                          <button
+                            onClick={() => generateSmartClips(vid.video_url, vid.id, vid.file_name)}
+                            disabled={generatingClipsFor === vid.id}
+                            className="mt-4 w-full bg-emerald-600 hover:bg-emerald-700 text-xs py-3 rounded-2xl flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                          >
+                            {generatingClipsFor === vid.id ? (
+                              <>Generating clips <RefreshCw className="w-3 h-3 animate-spin" /></>
+                            ) : (
+                              <>✂️ Smart Clips (15/30/60s hooks)</>
+                            )}
+                          </button>
                         </div>
                       </div>
                     ))}
                   </div>
                 )}
 
-                {(activeHistoryTab === 'all' || activeHistoryTab === 'text') && textHistory.length > 0 && (
+                {/* Text items */}
+                {(activeHistoryTab === 'all' || activeHistoryTab === 'text') && (
                   <div>
                     <h4 className="uppercase text-xs tracking-widest text-zinc-500 mb-4">Text Content</h4>
-                    {textHistory.map((item) => (
+                    {filteredText.length === 0 && textHistory.length > 0 && (
+                      <p className="text-zinc-500 py-8 text-center">No matching text</p>
+                    )}
+                    {filteredText.map((item) => (
                       <div 
                         key={item.id} 
                         onClick={() => { 
@@ -677,18 +837,27 @@ export default function Home() {
                           setShowHistory(false); 
                           window.scrollTo({ top: 0, behavior: 'smooth' }); 
                         }}
-                        className="bg-zinc-900 rounded-2xl p-5 mb-4 cursor-pointer hover:bg-zinc-800"
+                        className="bg-zinc-900 rounded-3xl p-5 mb-4 cursor-pointer hover:bg-zinc-800 group relative"
                       >
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteHistoryItem(item.id, 'text');
+                          }}
+                          className="absolute top-4 right-4 text-red-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                         <p className="line-clamp-3 text-sm text-zinc-300">{item.original_content}</p>
                         <p className="text-xs text-zinc-500 mt-3">
-                          {new Date(item.created_at).toLocaleDateString()}
+                          {formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}
                         </p>
                       </div>
                     ))}
                   </div>
                 )}
 
-                {videoHistory.length === 0 && textHistory.length === 0 && (
+                {filteredText.length === 0 && filteredVideo.length === 0 && textHistory.length === 0 && videoHistory.length === 0 && (
                   <p className="text-center py-20 text-zinc-500">Your amplified content will appear here</p>
                 )}
               </div>
@@ -739,7 +908,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* Zernio Instructions Modal - Final polished version with soft affiliate note */}
+      {/* Zernio Instructions Modal */}
       {showZernioHelpModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
           <div className="bg-zinc-900 rounded-3xl p-8 max-w-2xl w-full mx-4 max-h-[90vh] overflow-auto">
@@ -749,7 +918,6 @@ export default function Home() {
             </div>
 
             <div className="space-y-8">
-              {/* Step 1 */}
               <div className="flex gap-6">
                 <div className="w-8 h-8 bg-violet-600 text-white rounded-2xl flex items-center justify-center font-bold flex-shrink-0">1</div>
                 <div className="flex-1">
@@ -758,7 +926,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Step 2 - Crystal clear */}
               <div className="flex gap-6">
                 <div className="w-8 h-8 bg-violet-600 text-white rounded-2xl flex items-center justify-center font-bold flex-shrink-0">2</div>
                 <div className="flex-1">
@@ -774,7 +941,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Step 3 */}
               <div className="flex gap-6">
                 <div className="w-8 h-8 bg-violet-600 text-white rounded-2xl flex items-center justify-center font-bold flex-shrink-0">3</div>
                 <div className="flex-1">
@@ -806,6 +972,80 @@ export default function Home() {
             <p className="text-center text-xs text-zinc-500 mt-6">
               This integration is powered by Zernio. If you upgrade to a paid Zernio plan later, it helps support the continued development of ContentAmplifier at no extra cost to you.
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* Video preview modal */}
+      {previewVideo && (
+        <div 
+          className="fixed inset-0 bg-black/90 flex items-center justify-center z-[9999] p-4"
+          onClick={() => setPreviewVideo(null)}
+        >
+          <div 
+            className="max-w-4xl w-full mx-auto bg-zinc-950 rounded-3xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <video 
+              controls 
+              autoPlay 
+              className="w-full aspect-video" 
+              src={previewVideo.url} 
+            />
+            <div className="p-6 flex justify-between items-center">
+              <p className="text-white/70">{previewVideo.name}</p>
+              <button 
+                onClick={() => setPreviewVideo(null)}
+                className="px-6 py-2 bg-white/10 hover:bg-white/20 rounded-2xl text-sm"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Smart Clips Modal */}
+      {clipModal && (
+        <div 
+          className="fixed inset-0 bg-black/90 flex items-center justify-center z-[10000] p-4"
+          onClick={() => setClipModal(null)}
+        >
+          <div 
+            className="max-w-3xl w-full mx-auto bg-zinc-950 rounded-3xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 border-b border-white/10 flex items-center justify-between">
+              <h3 className="text-xl font-bold">Smart Clips for {clipModal.clips[0]?.fileName || 'this video'}</h3>
+              <button onClick={() => setClipModal(null)} className="text-zinc-400 hover:text-white">✕</button>
+            </div>
+            <div className="p-6 space-y-6 max-h-[70vh] overflow-auto">
+              {clipModal.clips.map((clip: any, i: number) => (
+                <div key={i} className="flex gap-4 bg-zinc-900 rounded-3xl p-4">
+                  <div className="flex-1">
+                    <video controls className="w-full rounded-2xl" src={clip.url} />
+                  </div>
+                  <div className="w-48 flex flex-col justify-between">
+                    <div>
+                      <div className="text-emerald-400 text-sm font-medium">{clip.duration}s hook</div>
+                      <p className="text-xs text-zinc-400 line-clamp-4 mt-2">{clip.reason}</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        const a = document.createElement('a');
+                        a.href = clip.url;
+                        a.download = clip.filename;
+                        a.click();
+                        showToast(`Downloaded ${clip.duration}s clip!`);
+                      }}
+                      className="mt-auto bg-white/10 hover:bg-white/20 py-3 rounded-2xl text-sm flex items-center justify-center gap-2"
+                    >
+                      <Download className="w-4 h-4" /> Download
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
