@@ -17,18 +17,16 @@ export async function POST(req: NextRequest) {
   let inputPath = '';
   const tempClips: string[] = [];
   try {
-    const { videoUrl, videoId, fileName, userId } = await req.json();
+    const { videoUrl, videoId, fileName, userId, transcription } = await req.json();
 
     if (!videoUrl || !userId) {
       return NextResponse.json({ error: 'Missing videoUrl or userId' }, { status: 400 });
     }
 
-    // Ensure temp folder exists (same as your working optimize-video route)
     fs.mkdirSync(TEMP_DIR, { recursive: true });
 
     console.log('🔄 Generating Smart Clips for:', fileName);
 
-    // Download original video
     const videoResponse = await fetch(videoUrl);
     if (!videoResponse.ok) throw new Error('Failed to download video');
 
@@ -43,7 +41,6 @@ export async function POST(req: NextRequest) {
       const clipPath = path.join(TEMP_DIR, `${uuidv4()}-${duration}s.mp4`);
       tempClips.push(clipPath);
 
-      // Simple hook from middle of video (future version will use Whisper timestamps for smarter detection)
       const startTime = 10;
 
       await new Promise((resolve, reject) => {
@@ -65,7 +62,6 @@ export async function POST(req: NextRequest) {
       const clipBuffer = fs.readFileSync(clipPath);
       const clipFilename = `clips/${userId}/${videoId}-${duration}s-${uuidv4()}.mp4`;
 
-      // Upload to Supabase storage (same bucket as your videos)
       const { error: uploadError } = await supabase.storage
         .from('videos')
         .upload(clipFilename, clipBuffer, {
@@ -83,7 +79,8 @@ export async function POST(req: NextRequest) {
         duration,
         url: publicUrl,
         filename: `${fileName ? fileName.split('.')[0] : 'clip'}-smartclip-${duration}s.mp4`,
-        reason: `AI-detected best ${duration}s hook`
+        reason: `AI-detected best ${duration}s hook`,
+        transcription: transcription || ''   // ← THIS IS THE KEY LINE THAT WAS MISSING
       });
     }
 
@@ -92,7 +89,6 @@ export async function POST(req: NextRequest) {
     console.error('Smart Clip error:', err);
     return NextResponse.json({ error: err.message || 'Failed to generate clips' }, { status: 500 });
   } finally {
-    // Safe cleanup (same as your working optimize-video route)
     if (inputPath && fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
     tempClips.forEach(p => {
       if (fs.existsSync(p)) fs.unlinkSync(p);

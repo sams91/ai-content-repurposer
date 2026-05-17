@@ -45,6 +45,10 @@ export default function Home() {
   const [generatingClipsFor, setGeneratingClipsFor] = useState<string | null>(null);
   const [clipModal, setClipModal] = useState<{ videoId: string; clips: any[] } | null>(null);
 
+  // Burn-in Captions + Thumbnail states
+  const [burningCaptionsFor, setBurningCaptionsFor] = useState<string | null>(null);
+  const [generatingThumbnailFor, setGeneratingThumbnailFor] = useState<string | null>(null);
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
@@ -122,14 +126,19 @@ export default function Home() {
     }
   };
 
-  // Smart Clipping
-  const generateSmartClips = async (videoUrl: string, videoId: string, fileName: string) => {
+  const generateSmartClips = async (videoUrl: string, videoId: string, fileName: string, transcription?: string) => {
     setGeneratingClipsFor(videoId);
     try {
       const response = await fetch('/api/smart-clip', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ videoUrl, videoId, fileName, userId: user.id }),
+        body: JSON.stringify({ 
+          videoUrl, 
+          videoId, 
+          fileName, 
+          userId: user.id,
+          transcription: transcription || '' 
+        }),
       });
       const data = await response.json();
       if (data.clips) {
@@ -141,6 +150,68 @@ export default function Home() {
       showToast('Smart Clipping failed', true);
     } finally {
       setGeneratingClipsFor(null);
+    }
+  };
+
+  const burnCaptions = async (clipUrl: string, clipDuration: number, clipFilename: string, captionText?: string) => {
+    setBurningCaptionsFor(clipFilename);
+    try {
+      const response = await fetch('/api/burn-captions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          videoUrl: clipUrl, 
+          filename: clipFilename,
+          text: captionText || '' 
+        }),
+      });
+      const data = await response.json();
+      if (data.captionedUrl) {
+        const res = await fetch(data.captionedUrl);
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${clipFilename.split('.')[0] || 'clip'}-with-captions.mp4`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast(`✅ ${clipDuration}s clip with burned captions downloaded!`);
+      } else {
+        showToast(data.error || 'Burn failed', true);
+      }
+    } catch {
+      showToast('Burn-in Captions failed', true);
+    } finally {
+      setBurningCaptionsFor(null);
+    }
+  };
+
+  const generateThumbnail = async (clipUrl: string, clipFilename: string) => {
+    setGeneratingThumbnailFor(clipFilename);
+    try {
+      const response = await fetch('/api/generate-thumbnail', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoUrl: clipUrl, filename: clipFilename }),
+      });
+      const data = await response.json();
+      if (data.thumbnailUrl) {
+        const res = await fetch(data.thumbnailUrl);
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${clipFilename.split('.')[0] || 'clip'}-thumbnail.jpg`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('✅ Thumbnail downloaded!');
+      } else {
+        showToast(data.error || 'Thumbnail failed', true);
+      }
+    } catch {
+      showToast('Thumbnail failed', true);
+    } finally {
+      setGeneratingThumbnailFor(null);
     }
   };
 
@@ -800,7 +871,7 @@ export default function Home() {
                             </button>
                           </div>
                           <button
-                            onClick={() => generateSmartClips(vid.video_url, vid.id, vid.file_name)}
+                            onClick={() => generateSmartClips(vid.video_url, vid.id, vid.file_name, vid.transcription)}
                             disabled={generatingClipsFor === vid.id}
                             className="mt-4 w-full bg-emerald-600 hover:bg-emerald-700 text-xs py-3 rounded-2xl flex items-center justify-center gap-2 transition-all disabled:opacity-50"
                           >
@@ -998,7 +1069,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* Smart Clips Modal - UPDATED DOWNLOAD HANDLER */}
+      {/* Smart Clips Modal */}
       {clipModal && (
         <div 
           className="fixed inset-0 bg-black/90 flex items-center justify-center z-[10000] p-4"
@@ -1018,11 +1089,39 @@ export default function Home() {
                   <div className="flex-1">
                     <video controls className="w-full rounded-2xl" src={clip.url} />
                   </div>
-                  <div className="w-48 flex flex-col justify-between">
+                  <div className="w-48 flex flex-col justify-between gap-3">
                     <div>
                       <div className="text-emerald-400 text-sm font-medium">{clip.duration}s hook</div>
                       <p className="text-xs text-zinc-400 line-clamp-4 mt-2">{clip.reason}</p>
                     </div>
+
+                    {/* Burn Captions - passes REAL transcription text */}
+                    <button
+                      onClick={() => burnCaptions(clip.url, clip.duration, clip.filename, clip.transcription)}
+                      disabled={burningCaptionsFor === clip.filename}
+                      className="bg-violet-600 hover:bg-violet-700 py-3 rounded-2xl text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {burningCaptionsFor === clip.filename ? (
+                        <>Burning captions <RefreshCw className="w-3 h-3 animate-spin" /></>
+                      ) : (
+                        <>🔥 Burn Captions</>
+                      )}
+                    </button>
+
+                    {/* Thumbnail */}
+                    <button
+                      onClick={() => generateThumbnail(clip.url, clip.filename)}
+                      disabled={generatingThumbnailFor === clip.filename}
+                      className="bg-amber-600 hover:bg-amber-700 py-3 rounded-2xl text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {generatingThumbnailFor === clip.filename ? (
+                        <>Extracting thumbnail <RefreshCw className="w-3 h-3 animate-spin" /></>
+                      ) : (
+                        <>🖼️ Thumbnail</>
+                      )}
+                    </button>
+
+                    {/* Direct Download */}
                     <button
                       onClick={async () => {
                         try {
@@ -1039,7 +1138,7 @@ export default function Home() {
                           showToast('Download failed', true);
                         }
                       }}
-                      className="mt-auto bg-white/10 hover:bg-white/20 py-3 rounded-2xl text-sm flex items-center justify-center gap-2"
+                      className="bg-white/10 hover:bg-white/20 py-3 rounded-2xl text-sm flex items-center justify-center gap-2"
                     >
                       <Download className="w-4 h-4" /> Download
                     </button>
