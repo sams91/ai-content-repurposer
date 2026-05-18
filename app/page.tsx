@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Sparkles, ArrowRight, CheckCircle, RefreshCw, LogOut, Clock, Upload, Copy, RotateCw, Share2, Video, Play, Zap, Send, HelpCircle, Trash2, Search, Download } from 'lucide-react';
+import { Sparkles, ArrowRight, CheckCircle, RefreshCw, LogOut, Clock, Upload, Copy, RotateCw, Share2, Video, Play, Zap, Send, HelpCircle, Trash2, Search, Download, Mic } from 'lucide-react';
 import { supabase } from './supabase';
 import VideoRecorder from '@/components/VideoRecorder';
+import AudioProcessor from '@/components/AudioProcessor';
 import { formatDistanceToNow } from 'date-fns';
 
 export default function Home() {
@@ -34,7 +35,7 @@ export default function Home() {
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [isCopyingAll, setIsCopyingAll] = useState<boolean>(false);
   const [shareLink, setShareLink] = useState<string | null>(null);
-  const [activeMode, setActiveMode] = useState<'text' | 'video'>('video');
+  const [activeMode, setActiveMode] = useState<'text' | 'video' | 'audio'>('video');
 
   // Zernio key modal
   const [showZernioKeyModal, setShowZernioKeyModal] = useState(false);
@@ -608,6 +609,12 @@ export default function Home() {
                   >
                     <Video className="w-5 h-5" /> Video Mode
                   </button>
+                  <button
+                    onClick={() => setActiveMode('audio')}
+                    className={`px-8 py-3 rounded-3xl flex items-center gap-2 transition-all ${activeMode === 'audio' ? 'bg-white text-black font-medium' : 'hover:bg-white/10'}`}
+                  >
+                    <Mic className="w-5 h-5" /> Audio Mode
+                  </button>
                 </div>
               </div>
 
@@ -785,6 +792,13 @@ export default function Home() {
               {activeMode === 'video' && (
                 <div className="max-w-4xl mx-auto">
                   <VideoRecorder onAmplifySuccess={handleAmplifySuccess} />
+                </div>
+              )}
+
+              {/* AUDIO MODE — Podcast / Voiceover Mode */}
+              {activeMode === 'audio' && (
+                <div className="max-w-4xl mx-auto">
+                  <AudioProcessor onAmplifySuccess={handleAmplifySuccess} />
                 </div>
               )}
             </div>
