@@ -530,6 +530,7 @@ export default function Home() {
             <div className="flex items-center gap-6 text-sm">
               <button onClick={() => window.location.href = '/'} className="hover:text-violet-400 transition">Home</button>
               <button onClick={() => window.location.href = '/why-amplify'} className="hover:text-violet-400 transition">Why Amplify with Zernio</button>
+              <button onClick={() => window.location.href = '/dashboard'} className="hover:text-violet-400 transition">Dashboard</button>
               <button onClick={() => window.location.href = '/pricing'} className="hover:text-violet-400 transition">Pricing</button>
               <button onClick={() => setShowHistory(!showHistory)} className="flex items-center gap-2 hover:text-violet-400 transition">
                 <Clock className="w-4 h-4" /> History
