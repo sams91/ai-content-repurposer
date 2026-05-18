@@ -7,6 +7,18 @@ import VideoRecorder from '@/components/VideoRecorder';
 import { formatDistanceToNow } from 'date-fns';
 
 export default function Home() {
+  // Full platform list for dropdown
+  const platforms = [
+    { value: 'TikTok', label: 'TikTok / Reels (9:16)' },
+    { value: 'YouTube', label: 'YouTube / Shorts (16:9)' },
+    { value: 'Instagram', label: 'Instagram (1:1)' },
+    { value: 'LinkedIn', label: 'LinkedIn (16:9)' },
+    { value: 'X', label: 'X (Twitter)' },
+    { value: 'Rumble', label: 'Rumble (16:9)' },
+    { value: 'Threads', label: 'Threads (1:1)' },
+    { value: 'ShortsReels', label: 'Shorts / Reels (9:16)' },
+  ];
+
   const [content, setContent] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [result, setResult] = useState<Record<string, any> | null>(null);
@@ -455,6 +467,13 @@ export default function Home() {
     }
   };
 
+  const startOverText = () => {
+    setContent('');
+    setResult(null);
+    setShareLink(null);
+    showToast('Started fresh! Ready for new content.');
+  };
+
   const regeneratePlatform = async (platform: string) => {
     if (!content.trim() || !user) return;
     
@@ -510,17 +529,10 @@ export default function Home() {
           {user && (
             <div className="flex items-center gap-6 text-sm">
               <button onClick={() => window.location.href = '/'} className="hover:text-violet-400 transition">Home</button>
-              <button onClick={() => window.location.href = '/why-amplify'} className="hover:text-violet-400 transition">Why Amplify</button>
+              <button onClick={() => window.location.href = '/why-amplify'} className="hover:text-violet-400 transition">Why Amplify with Zernio</button>
               <button onClick={() => window.location.href = '/pricing'} className="hover:text-violet-400 transition">Pricing</button>
               <button onClick={() => setShowHistory(!showHistory)} className="flex items-center gap-2 hover:text-violet-400 transition">
                 <Clock className="w-4 h-4" /> History
-              </button>
-              
-              <button 
-                onClick={() => setShowZernioKeyModal(true)}
-                className="flex items-center gap-2 hover:text-violet-400 transition"
-              >
-                <Zap className="w-4 h-4" /> Zernio
               </button>
 
               <span className="text-zinc-400">{user.email}</span>
@@ -598,57 +610,61 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* TEXT MODE */}
+              {/* TEXT MODE — Teams-style unified input + Start Over */}
               {activeMode === 'text' && (
                 <div className="max-w-3xl mx-auto">
                   <div 
-                    className={`border-2 border-dashed border-violet-500/30 rounded-3xl p-12 text-center transition-all ${isDragging ? 'border-violet-500 bg-violet-500/10' : 'border-white/20'}`}
+                    className={`border-2 border-dashed transition-all rounded-3xl p-8 bg-zinc-900/90 border-white/10 ${
+                      isDragging ? 'border-violet-500 bg-violet-500/10' : ''
+                    }`}
                     onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                     onDragLeave={() => setIsDragging(false)}
                     onDrop={handleDrop}
                   >
-                    <Upload className="w-12 h-12 mx-auto mb-4 text-violet-400" />
-                    <p className="text-lg mb-2">Drop a DOCX or TXT file here</p>
-                    <p className="text-sm text-zinc-500 mb-6">or paste text below</p>
-
-                    <input 
-                      type="file" 
-                      accept=".docx,.txt" 
-                      onChange={(e) => e.target.files && handleFileUpload(e.target.files[0])} 
-                      className="hidden" 
-                      id="file-upload" 
-                    />
-                    <label 
-                      htmlFor="file-upload" 
-                      className="cursor-pointer inline-block bg-zinc-900 hover:bg-zinc-800 border border-violet-500/50 px-6 py-3 rounded-2xl text-sm transition"
-                    >
-                      Select File
-                    </label>
-                  </div>
-
-                  <div className="mt-6 bg-zinc-900/90 border border-white/10 rounded-3xl p-8">
-                    <div className="flex justify-between text-sm text-zinc-500 mb-2">
-                      <span>Input Content</span>
-                      <span>{content.length} characters</span>
+                    <div className="text-center mb-6">
+                      <Upload className="w-10 h-10 mx-auto mb-3 text-violet-400" />
+                      <p className="text-lg font-medium">Drop DOCX or TXT here</p>
+                      <p className="text-sm text-zinc-400">or paste your content below</p>
                     </div>
+
                     <textarea 
                       value={content} 
                       onChange={(e) => setContent(e.target.value)} 
-                      placeholder="Or paste your content here..." 
-                      className="w-full h-48 bg-zinc-950 border border-white/10 rounded-2xl p-6 text-lg placeholder-zinc-500 focus:outline-none focus:border-violet-500 resize-none" 
+                      placeholder="Start typing or drop a file directly into this box..." 
+                      className="w-full h-64 bg-zinc-950 border border-white/10 rounded-2xl p-6 text-lg placeholder-zinc-500 focus:outline-none focus:border-violet-500 resize-none"
                     />
 
-                    <button 
-                      onClick={() => handleRepurpose()} 
-                      disabled={isProcessing || !content.trim()} 
-                      className="mt-6 w-full bg-gradient-to-r from-violet-600 via-fuchsia-600 to-violet-600 hover:brightness-110 disabled:bg-zinc-700 py-4 rounded-2xl font-semibold flex items-center justify-center gap-3 text-lg transition-all duration-300 shadow-lg shadow-violet-500/30"
-                    >
-                      {isProcessing ? (
-                        <>Amplifying Across the Universe <RefreshCw className="w-5 h-5 animate-spin" /></>
-                      ) : (
-                        <>Amplify Content <ArrowRight className="w-5 h-5" /></>
-                      )}
-                    </button>
+                    <div className="flex justify-between items-center mt-4">
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs text-zinc-400">{content.length} characters</span>
+                        
+                        <input 
+                          type="file" 
+                          accept=".docx,.txt" 
+                          onChange={(e) => e.target.files && handleFileUpload(e.target.files[0])} 
+                          className="hidden" 
+                          id="file-upload" 
+                        />
+                        <label 
+                          htmlFor="file-upload" 
+                          className="cursor-pointer flex items-center gap-2 text-sm text-violet-400 hover:text-violet-300 transition"
+                        >
+                          <Upload className="w-4 h-4" /> Select File
+                        </label>
+                      </div>
+
+                      <button 
+                        onClick={() => handleRepurpose()} 
+                        disabled={isProcessing || !content.trim()} 
+                        className="bg-gradient-to-r from-violet-600 via-fuchsia-600 to-violet-600 hover:brightness-110 disabled:bg-zinc-700 px-8 py-3 rounded-2xl font-semibold flex items-center justify-center gap-3 transition-all shadow-lg shadow-violet-500/30"
+                      >
+                        {isProcessing ? (
+                          <>Amplifying <RefreshCw className="w-4 h-4 animate-spin" /></>
+                        ) : (
+                          <>Amplify Content <ArrowRight className="w-4 h-4" /></>
+                        )}
+                      </button>
+                    </div>
                   </div>
 
                   {result && (
@@ -672,6 +688,12 @@ export default function Home() {
                             className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 px-5 py-2 rounded-2xl text-sm font-semibold"
                           >
                             <Send className="w-4 h-4" /> Post with Zernio
+                          </button>
+                          <button
+                            onClick={startOverText}
+                            className="flex items-center gap-2 bg-zinc-800 hover:bg-red-600/20 hover:text-red-400 px-5 py-2 rounded-2xl text-sm transition"
+                          >
+                            <Trash2 className="w-4 h-4" /> Start Over
                           </button>
                         </div>
                       </div>
@@ -724,7 +746,6 @@ export default function Home() {
                         })}
                       </div>
 
-                      {/* Text Mode Zernio modal */}
                       {showTextZernioModal && (
                         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
                           <div className="bg-zinc-900 rounded-3xl p-8 max-w-md w-full mx-4">
@@ -844,32 +865,30 @@ export default function Home() {
                           {vid.transcription && (
                             <p className="text-xs text-zinc-400 mt-3 line-clamp-2">{vid.transcription}</p>
                           )}
-                          <div className="mt-4 grid grid-cols-2 gap-2">
-                            <button 
-                              onClick={() => optimizeAndDownload(vid.video_url, 'TikTok', vid.file_name)}
-                              className="bg-white/10 hover:bg-white/20 text-xs py-2 rounded-2xl flex items-center justify-center gap-1"
+
+                          <div className="mt-4">
+                            <label className="block text-xs text-zinc-400 mb-1 flex items-center gap-1">
+                              <Download className="w-3 h-3" /> Download formatted for…
+                            </label>
+                            <select
+                              onChange={(e) => {
+                                if (e.target.value) {
+                                  optimizeAndDownload(vid.video_url, e.target.value, vid.file_name || 'video');
+                                  e.target.value = '';
+                                }
+                              }}
+                              style={{ colorScheme: 'dark' }}
+                              className="w-full bg-zinc-900 text-white border border-white/10 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-violet-400 transition-colors"
                             >
-                              <Download className="w-3 h-3" /> TikTok/Reels
-                            </button>
-                            <button 
-                              onClick={() => optimizeAndDownload(vid.video_url, 'YouTube', vid.file_name)}
-                              className="bg-white/10 hover:bg-white/20 text-xs py-2 rounded-2xl flex items-center justify-center gap-1"
-                            >
-                              <Download className="w-3 h-3" /> YouTube
-                            </button>
-                            <button 
-                              onClick={() => optimizeAndDownload(vid.video_url, 'Instagram', vid.file_name)}
-                              className="bg-white/10 hover:bg-white/20 text-xs py-2 rounded-2xl flex items-center justify-center gap-1"
-                            >
-                              <Download className="w-3 h-3" /> Instagram
-                            </button>
-                            <button 
-                              onClick={() => optimizeAndDownload(vid.video_url, 'LinkedIn', vid.file_name)}
-                              className="bg-white/10 hover:bg-white/20 text-xs py-2 rounded-2xl flex items-center justify-center gap-1"
-                            >
-                              <Download className="w-3 h-3" /> LinkedIn
-                            </button>
+                              <option value="">Choose platform…</option>
+                              {platforms.map((p) => (
+                                <option key={p.value} value={p.value}>
+                                  {p.label}
+                                </option>
+                              ))}
+                            </select>
                           </div>
+
                           <button
                             onClick={() => generateSmartClips(vid.video_url, vid.id, vid.file_name, vid.transcription)}
                             disabled={generatingClipsFor === vid.id}
@@ -1095,7 +1114,6 @@ export default function Home() {
                       <p className="text-xs text-zinc-400 line-clamp-4 mt-2">{clip.reason}</p>
                     </div>
 
-                    {/* Burn Captions - passes REAL transcription text */}
                     <button
                       onClick={() => burnCaptions(clip.url, clip.duration, clip.filename, clip.transcription)}
                       disabled={burningCaptionsFor === clip.filename}
@@ -1108,7 +1126,6 @@ export default function Home() {
                       )}
                     </button>
 
-                    {/* Thumbnail */}
                     <button
                       onClick={() => generateThumbnail(clip.url, clip.filename)}
                       disabled={generatingThumbnailFor === clip.filename}
@@ -1121,7 +1138,6 @@ export default function Home() {
                       )}
                     </button>
 
-                    {/* Direct Download */}
                     <button
                       onClick={async () => {
                         try {
