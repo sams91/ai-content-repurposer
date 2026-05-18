@@ -13,9 +13,18 @@ const supabase = createClient(
 
 const TEMP_DIR = os.tmpdir();
 
-function wrapText(text: string, maxCharsPerLine: number = 65): string[] {
-  if (!text) return [''];
-  const words = text.split(' ');
+function calculateCaptionSettings(width: number) {
+  // Much smaller font as requested (~5/8 size) with generous side padding
+  const fontSize = Math.max(14, Math.floor(width / 38));
+  const charWidthEstimate = fontSize * 0.68;
+  const usableWidth = Math.floor(width * 0.88); 
+  const maxCharsPerLine = Math.max(32, Math.floor(usableWidth / charWidthEstimate));
+  return { fontSize, maxCharsPerLine };
+}
+
+function wrapText(text: string, maxCharsPerLine: number): string[] {
+  if (!text || text.trim() === '') return ['No transcription available'];
+  const words = text.trim().split(' ');
   const lines: string[] = [];
   let currentLine = '';
   for (const word of words) {
@@ -27,8 +36,7 @@ function wrapText(text: string, maxCharsPerLine: number = 65): string[] {
     }
   }
   if (currentLine) lines.push(currentLine.trim());
-  // Max 2 lines for video captions
-  return lines.slice(0, 2);
+  return lines.slice(0, 3);
 }
 
 export async function POST(req: NextRequest) {
@@ -43,10 +51,9 @@ export async function POST(req: NextRequest) {
 
     fs.mkdirSync(TEMP_DIR, { recursive: true });
 
-    console.log('🔥 Burning captions for:', filename);
+    console.log('🚀 Burning captions for:', filename);
     console.log('Caption text length:', text ? text.length : 0);
 
-    // Download original video
     const videoResponse = await fetch(videoUrl);
     if (!videoResponse.ok) throw new Error('Failed to download video');
 
@@ -56,21 +63,45 @@ export async function POST(req: NextRequest) {
 
     outputPath = path.join(TEMP_DIR, `${uuidv4()}-with-captions.mp4`);
 
-    // Wrap into 2 lines max
-    const lines = wrapText(text && text.trim() ? text.trim() : '%{pts\\:hms}');
+    const videoInfo = await new Promise<any>((resolve, reject) => {
+      ffmpeg.ffprobe(inputPath, (err, data) => {
+        if (err) reject(err);
+        else resolve(data);
+      });
+    });
 
-    // Build two drawtext filters for clean wrapping
-    const filters = [];
-    if (lines[0]) {
-      const escapedLine1 = lines[0].replace(/'/g, "\\'");
-      filters.push(`drawtext=fontsize=32:fontcolor=white:box=1:boxcolor=black@0.85:boxborderw=8:x=(w-text_w)/2:y=h-th-90:text='${escapedLine1}'`);
-    }
-    if (lines[1]) {
-      const escapedLine2 = lines[1].replace(/'/g, "\\'");
-      filters.push(`drawtext=fontsize=32:fontcolor=white:box=1:boxcolor=black@0.85:boxborderw=8:x=(w-text_w)/2:y=h-th-45:text='${escapedLine2}'`);
-    }
+    const videoStream = videoInfo.streams.find((s: any) => s.codec_type === 'video');
+    const width = videoStream?.width || 720;
+    const height = videoStream?.height || 1280;
+    console.log(`📐 Video dimensions: ${width}x${height}`);
 
-    console.log('Using drawtext filters:', filters);
+    const { fontSize, maxCharsPerLine } = calculateCaptionSettings(width);
+
+    const lines = wrapText(text, maxCharsPerLine);
+    console.log('Wrapped lines:', lines);
+    console.log(`Using fontSize: ${fontSize}, maxCharsPerLine: ${maxCharsPerLine}`);
+
+    // Build multiple drawtext filters - one per line (most reliable, no \n issues)
+    const filters: string[] = [];
+    const lineHeight = fontSize + 6; // tight but readable
+    const totalTextHeight = lines.length * lineHeight;
+    let currentY = height - totalTextHeight - 38; // nice bottom padding
+
+    lines.forEach((line, index) => {
+      if (line) {
+        const escapedLine = line
+          .replace(/'/g, "\\'")
+          .replace(/:/g, '\\:')
+          .replace(/,/g, '\\,');
+        
+        filters.push(
+          `drawtext=fontsize=${fontSize}:fontcolor=white:box=1:boxcolor=black@0.8:boxborderw=6:x=(w-text_w)/2:y=${currentY}:text='${escapedLine}'`
+        );
+        currentY += lineHeight;
+      }
+    });
+
+    console.log('Number of drawtext filters:', filters.length);
 
     await new Promise((resolve, reject) => {
       ffmpeg(inputPath)
@@ -79,17 +110,16 @@ export async function POST(req: NextRequest) {
           '-c:v libx264',
           '-preset fast',
           '-crf 23',
-          '-c:a aac',
-          '-b:a 128k'
+          '-c:a copy',
+          '-movflags +faststart'
         ])
         .on('end', resolve)
-        .on('error', reject)
+        .on('error', (err) => reject(err))
         .save(outputPath);
     });
 
     const captionedBuffer = fs.readFileSync(outputPath);
 
-    // Upload captioned video
     const captionedFilename = `captioned/${uuidv4()}-${filename || 'clip'}-with-captions.mp4`;
     const { error: uploadError } = await supabase.storage
       .from('videos')
@@ -107,13 +137,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       captionedUrl: publicUrl,
-      message: '✅ Captions burned into video'
+      message: 'Captions burned into video successfully'
     });
   } catch (err: any) {
     console.error('Burn captions error:', err);
     return NextResponse.json({ error: err.message || 'Failed to burn captions' }, { status: 500 });
   } finally {
-    // Safe cleanup
     if (inputPath && fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
     if (outputPath && fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
   }
