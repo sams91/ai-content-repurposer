@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Sparkles, ArrowRight, CheckCircle, RefreshCw, LogOut, Clock, Upload, Copy, RotateCw, Share2, Video, Play, Zap, Send, HelpCircle, Trash2, Search, Download, Mic } from 'lucide-react';
 import { supabase } from './supabase';
+import { getUnifiedHistory } from './supabase';
 import VideoRecorder from '@/components/VideoRecorder';
 import AudioProcessor from '@/components/AudioProcessor';
 import { formatDistanceToNow } from 'date-fns';
@@ -28,8 +29,7 @@ export default function Home() {
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(false);
-  const [textHistory, setTextHistory] = useState<any[]>([]);
-  const [videoHistory, setVideoHistory] = useState<any[]>([]);
+  const [historyItems, setHistoryItems] = useState<any[]>([]); // unified history
   const [showHistory, setShowHistory] = useState<boolean>(false);
   const [activeHistoryTab, setActiveHistoryTab] = useState<'all' | 'text' | 'video' | 'audio'>('all');
   const [isDragging, setIsDragging] = useState<boolean>(false);
@@ -80,20 +80,8 @@ export default function Home() {
 
   const loadHistories = async () => {
     if (!user) return;
-
-    const { data: textData } = await supabase
-      .from('content_history')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false });
-    setTextHistory(textData || []);
-
-    const { data: videoData } = await supabase
-      .from('video_history')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false });
-    setVideoHistory(videoData || []);
+    const items = await getUnifiedHistory(user.id);
+    setHistoryItems(items);
   };
 
   const refreshHistory = () => {
@@ -104,7 +92,7 @@ export default function Home() {
     refreshHistory();
   };
 
-  const deleteHistoryItem = async (id: string, type: 'text' | 'video') => {
+  const deleteHistoryItem = async (id: string, type: 'text' | 'video' | 'audio') => {
     if (!user || !confirm(`Delete this ${type} item forever?`)) return;
     setDeletingId(id);
     const table = type === 'text' ? 'content_history' : 'video_history';
@@ -504,17 +492,18 @@ export default function Home() {
     }
   };
 
-  // Filter helpers
-  const isAudioFile = (fileName: string) => {
-    return /\.(mp3|wav|m4a|ogg|webm|aac)$/i.test(fileName || '');
-  };
-
-  const filteredText = textHistory.filter(item =>
-    item.original_content?.toLowerCase().includes(historySearch.toLowerCase())
+  // Filter helpers – now uses unified type from supabase.ts
+  const filteredText = historyItems.filter(item => item.type === 'text' && 
+    (item.original_content || '').toLowerCase().includes(historySearch.toLowerCase())
   );
 
-  const filteredVideoItems = videoHistory.filter(item => !isAudioFile(item.file_name));
-  const filteredAudioItems = videoHistory.filter(item => isAudioFile(item.file_name));
+  const filteredVideoItems = historyItems.filter(item => item.type === 'video' &&
+    (item.file_name || '').toLowerCase().includes(historySearch.toLowerCase())
+  );
+
+  const filteredAudioItems = historyItems.filter(item => item.type === 'audio' &&
+    (item.file_name || '').toLowerCase().includes(historySearch.toLowerCase())
+  );
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white relative overflow-hidden">
@@ -539,6 +528,9 @@ export default function Home() {
               <button onClick={() => window.location.href = '/why-amplify'} className="hover:text-violet-400 transition">Why Amplify with Zernio</button>
               <button onClick={() => window.location.href = '/dashboard'} className="hover:text-violet-400 transition">Dashboard</button>
               <button onClick={() => window.location.href = '/pricing'} className="hover:text-violet-400 transition">Pricing</button>
+              <button onClick={() => window.location.href = '/calendar'} className="hover:text-violet-400 transition flex items-center gap-1">
+                <Clock className="w-4 h-4" /> Calendar
+              </button>
               <button onClick={() => setShowHistory(!showHistory)} className="flex items-center gap-2 hover:text-violet-400 transition">
                 <Clock className="w-4 h-4" /> History
               </button>
@@ -628,9 +620,7 @@ export default function Home() {
               {activeMode === 'text' && (
                 <div className="max-w-3xl mx-auto">
                   <div 
-                    className={`border-2 border-dashed transition-all rounded-3xl p-8 bg-zinc-900/90 border-white/10 ${
-                      isDragging ? 'border-violet-500 bg-violet-500/10' : ''
-                    }`}
+                    className={`border-2 border-dashed transition-all rounded-3xl p-8 bg-zinc-900/90 border-white/10 ${isDragging ? 'border-violet-500 bg-violet-500/10' : ''}`}
                     onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                     onDragLeave={() => setIsDragging(false)}
                     onDrop={handleDrop}
@@ -850,7 +840,7 @@ export default function Home() {
                     <h4 className="uppercase text-xs tracking-widest text-zinc-500 mb-4 flex items-center gap-2">
                       <Video className="w-4 h-4" /> Videos
                     </h4>
-                    {filteredVideoItems.length === 0 && videoHistory.length > 0 && (
+                    {filteredVideoItems.length === 0 && historyItems.length > 0 && (
                       <p className="text-zinc-500 py-8 text-center">No matching videos</p>
                     )}
                     {filteredVideoItems.map((vid: any) => (
@@ -934,7 +924,7 @@ export default function Home() {
                     <h4 className="uppercase text-xs tracking-widest text-zinc-500 mb-4 flex items-center gap-2">
                       <Mic className="w-4 h-4" /> Audio
                     </h4>
-                    {filteredAudioItems.length === 0 && videoHistory.length > 0 && (
+                    {filteredAudioItems.length === 0 && historyItems.length > 0 && (
                       <p className="text-zinc-500 py-8 text-center">No matching audio files</p>
                     )}
                     {filteredAudioItems.map((aud: any) => (
@@ -955,7 +945,7 @@ export default function Home() {
                               </p>
                             </div>
                             <button 
-                              onClick={() => deleteHistoryItem(aud.id, 'video')} 
+                              onClick={() => deleteHistoryItem(aud.id, 'audio')} 
                               disabled={deletingId === aud.id}
                               className="text-red-400 hover:text-red-500 transition"
                             >
@@ -986,7 +976,7 @@ export default function Home() {
                 {(activeHistoryTab === 'all' || activeHistoryTab === 'text') && (
                   <div>
                     <h4 className="uppercase text-xs tracking-widest text-zinc-500 mb-4">Text Content</h4>
-                    {filteredText.length === 0 && textHistory.length > 0 && (
+                    {filteredText.length === 0 && historyItems.length > 0 && (
                       <p className="text-zinc-500 py-8 text-center">No matching text</p>
                     )}
                     {filteredText.map((item) => (
@@ -1017,7 +1007,7 @@ export default function Home() {
                   </div>
                 )}
 
-                {filteredText.length === 0 && filteredVideoItems.length === 0 && filteredAudioItems.length === 0 && textHistory.length === 0 && videoHistory.length === 0 && (
+                {filteredText.length === 0 && filteredVideoItems.length === 0 && filteredAudioItems.length === 0 && historyItems.length === 0 && (
                   <p className="text-center py-20 text-zinc-500">Your amplified content will appear here</p>
                 )}
               </div>
