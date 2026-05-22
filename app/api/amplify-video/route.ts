@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
       if (audioPath) await fs.unlink(audioPath).catch(() => {});
     }
 
-    // === STEP 2: Generate platform content ===
+    // === STEP 2: Generate platform content + TRUE Smart Clips ===
     const prompt = `You are an expert short-form video strategist.
 
 Video Transcription:
@@ -107,7 +107,12 @@ Create highly engaging, platform-optimized content. Return clean JSON only:
   "linkedin": { "text": "..." },
   "rumble": { "title": "...", "description": "..." },
   "threads": { "text": "..." },
-  "shorts_reels": { "hook": "...", "full_caption": "..." }
+  "shorts_reels": { "hook": "...", "full_caption": "..." },
+  "clipIdeas": [
+    { "duration": "15", "start": 12, "end": 27, "reason": "Strongest hook that grabs attention in first 15 seconds" },
+    { "duration": "30", "start": 45, "end": 75, "reason": "Best 30-second emotional moment" },
+    { "duration": "60", "start": 120, "end": 180, "reason": "Most shareable 60-second story segment" }
+  ]
 }`;
 
     const completion = await client.chat.completions.create({
@@ -171,20 +176,20 @@ Create highly engaging, platform-optimized content. Return clean JSON only:
       transcription,
       outputs,
       platforms: Object.entries(outputs).map(([platform, data]: [string, any]) => ({
-        platform: platform.toUpperCase(),
-        title: data.title || data.caption || "",
+        platform: platform.toUpperCase().replace('_', '/'),
+        title: data.title || data.caption || data.hook || "",
         description: data.description || "",
-        caption: data.caption || data.full_caption || data.text || "",
-        hashtags: data.hashtags ? data.hashtags.join(" ") : "",
+        caption: data.caption || data.full_caption || data.text || data.hook || "",
+        hashtags: data.hashtags || [],
       })),
+      clipIdeas: outputs.clipIdeas || [],
       video_url: publicUrl,
-      video_id: historyRecord.id,
-      provider: process.env.AI_PROVIDER || 'openai',
-      model: visionModel,
+      file_name: videoFile.name,
+      type: 'video'
     });
 
   } catch (error: any) {
-    console.error("❌ Amplify Video Error:", error);
-    return NextResponse.json({ error: error.message || "Failed to amplify video" }, { status: 500 });
+    console.error('Amplify video error:', error);
+    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
   }
 }

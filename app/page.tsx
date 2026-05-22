@@ -31,7 +31,7 @@ export default function Home() {
   const [textHistory, setTextHistory] = useState<any[]>([]);
   const [videoHistory, setVideoHistory] = useState<any[]>([]);
   const [showHistory, setShowHistory] = useState<boolean>(false);
-  const [activeHistoryTab, setActiveHistoryTab] = useState<'all' | 'text' | 'video'>('all');
+  const [activeHistoryTab, setActiveHistoryTab] = useState<'all' | 'text' | 'video' | 'audio'>('all');
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [isCopyingAll, setIsCopyingAll] = useState<boolean>(false);
   const [shareLink, setShareLink] = useState<string | null>(null);
@@ -52,11 +52,11 @@ export default function Home() {
   // History polish states
   const [historySearch, setHistorySearch] = useState<string>('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [previewVideo, setPreviewVideo] = useState<{ url: string; name: string } | null>(null);
+  const [previewVideo, setPreviewVideo] = useState<{ url: string; name: string; isAudio?: boolean } | null>(null);
 
   // Smart Clipping states
   const [generatingClipsFor, setGeneratingClipsFor] = useState<string | null>(null);
-  const [clipModal, setClipModal] = useState<{ videoId: string; clips: any[] } | null>(null);
+  const [clipModal, setClipModal] = useState<{ id: string; clips: any[]; type: 'video' | 'audio' } | null>(null);
 
   // Burn-in Captions + Thumbnail states
   const [burningCaptionsFor, setBurningCaptionsFor] = useState<string | null>(null);
@@ -139,23 +139,24 @@ export default function Home() {
     }
   };
 
-  const generateSmartClips = async (videoUrl: string, videoId: string, fileName: string, transcription?: string) => {
-    setGeneratingClipsFor(videoId);
+  const generateSmartClips = async (url: string, id: string, fileName: string, transcription?: string, type: 'video' | 'audio' = 'video') => {
+    setGeneratingClipsFor(id);
     try {
       const response = await fetch('/api/smart-clip', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          videoUrl, 
-          videoId, 
+          videoUrl: url, 
+          videoId: id, 
           fileName, 
           userId: user.id,
-          transcription: transcription || '' 
+          transcription: transcription || '',
+          type
         }),
       });
       const data = await response.json();
       if (data.clips) {
-        setClipModal({ videoId, clips: data.clips });
+        setClipModal({ id, clips: data.clips, type });
       } else {
         showToast(data.error || 'Failed to generate clips', true);
       }
@@ -503,12 +504,17 @@ export default function Home() {
     }
   };
 
+  // Filter helpers
+  const isAudioFile = (fileName: string) => {
+    return /\.(mp3|wav|m4a|ogg|webm|aac)$/i.test(fileName || '');
+  };
+
   const filteredText = textHistory.filter(item =>
     item.original_content?.toLowerCase().includes(historySearch.toLowerCase())
   );
-  const filteredVideo = videoHistory.filter(item =>
-    (item.file_name || item.transcription || '').toLowerCase().includes(historySearch.toLowerCase())
-  );
+
+  const filteredVideoItems = videoHistory.filter(item => !isAudioFile(item.file_name));
+  const filteredAudioItems = videoHistory.filter(item => isAudioFile(item.file_name));
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white relative overflow-hidden">
@@ -825,7 +831,7 @@ export default function Home() {
                 </div>
 
                 <div className="flex gap-2 mb-6 bg-zinc-900 p-1 rounded-3xl">
-                  {(['all', 'text', 'video'] as const).map((tab) => (
+                  {(['all', 'text', 'video', 'audio'] as const).map((tab) => (
                     <button
                       key={tab}
                       onClick={() => setActiveHistoryTab(tab)}
@@ -833,20 +839,21 @@ export default function Home() {
                         activeHistoryTab === tab ? 'bg-violet-600 text-white' : 'hover:bg-white/5'
                       }`}
                     >
-                      {tab === 'all' ? 'All' : tab === 'text' ? 'Text' : 'Videos'}
+                      {tab === 'all' ? 'All' : tab === 'text' ? 'Text' : tab === 'video' ? 'Videos' : 'Audio'}
                     </button>
                   ))}
                 </div>
 
+                {/* VIDEOS SECTION */}
                 {(activeHistoryTab === 'all' || activeHistoryTab === 'video') && (
                   <div className="mb-10">
                     <h4 className="uppercase text-xs tracking-widest text-zinc-500 mb-4 flex items-center gap-2">
                       <Video className="w-4 h-4" /> Videos
                     </h4>
-                    {filteredVideo.length === 0 && videoHistory.length > 0 && (
+                    {filteredVideoItems.length === 0 && videoHistory.length > 0 && (
                       <p className="text-zinc-500 py-8 text-center">No matching videos</p>
                     )}
-                    {filteredVideo.map((vid: any) => (
+                    {filteredVideoItems.map((vid: any) => (
                       <div key={vid.id} className="bg-zinc-900 rounded-3xl overflow-hidden mb-6 group">
                         <div 
                           className="relative aspect-video bg-black cursor-pointer"
@@ -905,11 +912,66 @@ export default function Home() {
                           </div>
 
                           <button
-                            onClick={() => generateSmartClips(vid.video_url, vid.id, vid.file_name, vid.transcription)}
+                            onClick={() => generateSmartClips(vid.video_url, vid.id, vid.file_name, vid.transcription, 'video')}
                             disabled={generatingClipsFor === vid.id}
                             className="mt-4 w-full bg-emerald-600 hover:bg-emerald-700 text-xs py-3 rounded-2xl flex items-center justify-center gap-2 transition-all disabled:opacity-50"
                           >
                             {generatingClipsFor === vid.id ? (
+                              <>Generating clips <RefreshCw className="w-3 h-3 animate-spin" /></>
+                            ) : (
+                              <>✂️ Smart Clips (15/30/60s hooks)</>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* AUDIO SECTION */}
+                {(activeHistoryTab === 'all' || activeHistoryTab === 'audio') && (
+                  <div className="mb-10">
+                    <h4 className="uppercase text-xs tracking-widest text-zinc-500 mb-4 flex items-center gap-2">
+                      <Mic className="w-4 h-4" /> Audio
+                    </h4>
+                    {filteredAudioItems.length === 0 && videoHistory.length > 0 && (
+                      <p className="text-zinc-500 py-8 text-center">No matching audio files</p>
+                    )}
+                    {filteredAudioItems.map((aud: any) => (
+                      <div key={aud.id} className="bg-zinc-900 rounded-3xl overflow-hidden mb-6 group">
+                        <div className="p-4 bg-black">
+                          <audio 
+                            controls 
+                            className="w-full"
+                            src={aud.video_url}
+                          />
+                        </div>
+                        <div className="p-4">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <p className="font-medium text-sm line-clamp-1">{aud.file_name || 'Recorded audio'}</p>
+                              <p className="text-xs text-zinc-500">
+                                {formatDistanceToNow(new Date(aud.created_at), { addSuffix: true })}
+                              </p>
+                            </div>
+                            <button 
+                              onClick={() => deleteHistoryItem(aud.id, 'video')} 
+                              disabled={deletingId === aud.id}
+                              className="text-red-400 hover:text-red-500 transition"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                          {aud.transcription && (
+                            <p className="text-xs text-zinc-400 mt-3 line-clamp-2">{aud.transcription}</p>
+                          )}
+
+                          <button
+                            onClick={() => generateSmartClips(aud.video_url, aud.id, aud.file_name, aud.transcription, 'audio')}
+                            disabled={generatingClipsFor === aud.id}
+                            className="mt-4 w-full bg-emerald-600 hover:bg-emerald-700 text-xs py-3 rounded-2xl flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                          >
+                            {generatingClipsFor === aud.id ? (
                               <>Generating clips <RefreshCw className="w-3 h-3 animate-spin" /></>
                             ) : (
                               <>✂️ Smart Clips (15/30/60s hooks)</>
@@ -955,7 +1017,7 @@ export default function Home() {
                   </div>
                 )}
 
-                {filteredText.length === 0 && filteredVideo.length === 0 && textHistory.length === 0 && videoHistory.length === 0 && (
+                {filteredText.length === 0 && filteredVideoItems.length === 0 && filteredAudioItems.length === 0 && textHistory.length === 0 && videoHistory.length === 0 && (
                   <p className="text-center py-20 text-zinc-500">Your amplified content will appear here</p>
                 )}
               </div>
@@ -1074,7 +1136,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* Video preview modal */}
+      {/* Video/Audio preview modal */}
       {previewVideo && (
         <div 
           className="fixed inset-0 bg-black/90 flex items-center justify-center z-[9999] p-4"
@@ -1084,12 +1146,16 @@ export default function Home() {
             className="max-w-4xl w-full mx-auto bg-zinc-950 rounded-3xl overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <video 
-              controls 
-              autoPlay 
-              className="w-full aspect-video" 
-              src={previewVideo.url} 
-            />
+            {previewVideo.isAudio ? (
+              <audio controls autoPlay className="w-full p-8" src={previewVideo.url} />
+            ) : (
+              <video 
+                controls 
+                autoPlay 
+                className="w-full aspect-video" 
+                src={previewVideo.url} 
+              />
+            )}
             <div className="p-6 flex justify-between items-center">
               <p className="text-white/70">{previewVideo.name}</p>
               <button 
@@ -1103,7 +1169,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* Smart Clips Modal */}
+      {/* Smart Clips Modal - NOW DYNAMIC + AUDIO-FRIENDLY */}
       {clipModal && (
         <div 
           className="fixed inset-0 bg-black/90 flex items-center justify-center z-[10000] p-4"
@@ -1114,14 +1180,20 @@ export default function Home() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-6 border-b border-white/10 flex items-center justify-between">
-              <h3 className="text-xl font-bold">Smart Clips for this video</h3>
+              <h3 className="text-xl font-bold">
+                Smart Clips for this {clipModal.type}
+              </h3>
               <button onClick={() => setClipModal(null)} className="text-zinc-400 hover:text-white">✕</button>
             </div>
             <div className="p-6 space-y-6 max-h-[70vh] overflow-auto">
               {clipModal.clips.map((clip: any, i: number) => (
                 <div key={i} className="flex gap-4 bg-zinc-900 rounded-3xl p-4">
                   <div className="flex-1">
-                    <video controls className="w-full rounded-2xl" src={clip.url} />
+                    {clipModal.type === 'video' ? (
+                      <video controls className="w-full rounded-2xl" src={clip.url} />
+                    ) : (
+                      <audio controls className="w-full" src={clip.url} />
+                    )}
                   </div>
                   <div className="w-48 flex flex-col justify-between gap-3">
                     <div>
@@ -1129,29 +1201,34 @@ export default function Home() {
                       <p className="text-xs text-zinc-400 line-clamp-4 mt-2">{clip.reason}</p>
                     </div>
 
-                    <button
-                      onClick={() => burnCaptions(clip.url, clip.duration, clip.filename, clip.transcription)}
-                      disabled={burningCaptionsFor === clip.filename}
-                      className="bg-violet-600 hover:bg-violet-700 py-3 rounded-2xl text-sm flex items-center justify-center gap-2 disabled:opacity-50"
-                    >
-                      {burningCaptionsFor === clip.filename ? (
-                        <>Burning captions <RefreshCw className="w-3 h-3 animate-spin" /></>
-                      ) : (
-                        <>🔥 Burn Captions</>
-                      )}
-                    </button>
+                    {/* Only show Burn Captions + Thumbnail for VIDEO */}
+                    {clipModal.type === 'video' && (
+                      <>
+                        <button
+                          onClick={() => burnCaptions(clip.url, clip.duration, clip.filename, clip.transcription)}
+                          disabled={burningCaptionsFor === clip.filename}
+                          className="bg-violet-600 hover:bg-violet-700 py-3 rounded-2xl text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          {burningCaptionsFor === clip.filename ? (
+                            <>Burning captions <RefreshCw className="w-3 h-3 animate-spin" /></>
+                          ) : (
+                            <>🔥 Burn Captions</>
+                          )}
+                        </button>
 
-                    <button
-                      onClick={() => generateThumbnail(clip.url, clip.filename)}
-                      disabled={generatingThumbnailFor === clip.filename}
-                      className="bg-amber-600 hover:bg-amber-700 py-3 rounded-2xl text-sm flex items-center justify-center gap-2 disabled:opacity-50"
-                    >
-                      {generatingThumbnailFor === clip.filename ? (
-                        <>Extracting thumbnail <RefreshCw className="w-3 h-3 animate-spin" /></>
-                      ) : (
-                        <>🖼️ Thumbnail</>
-                      )}
-                    </button>
+                        <button
+                          onClick={() => generateThumbnail(clip.url, clip.filename)}
+                          disabled={generatingThumbnailFor === clip.filename}
+                          className="bg-amber-600 hover:bg-amber-700 py-3 rounded-2xl text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          {generatingThumbnailFor === clip.filename ? (
+                            <>Extracting thumbnail <RefreshCw className="w-3 h-3 animate-spin" /></>
+                          ) : (
+                            <>🖼️ Thumbnail</>
+                          )}
+                        </button>
+                      </>
+                    )}
 
                     <button
                       onClick={async () => {

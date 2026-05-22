@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Sparkles, LogOut, Clock, Video, FileText, Zap, TrendingUp, BarChart3, RefreshCw, CheckCircle, Users, Calendar } from 'lucide-react';
+import { Sparkles, LogOut, Clock, Video, FileText, Zap, TrendingUp, BarChart3, RefreshCw, CheckCircle, Users, Calendar, Mic } from 'lucide-react';
 import { supabase } from '../supabase';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -51,12 +51,15 @@ export default function Dashboard() {
 
     setHasZernioKey(!!zernioData?.api_key);
 
-    // Fetch real Zernio analytics
+    // Fetch real Zernio analytics (includes accounts)
     if (zernioData?.api_key) {
       try {
         const res = await fetch(`/api/zernio/analytics?user_id=${user.id}`);
         const json = await res.json();
-        if (json.success) setZernioMetrics(json.metrics);
+        if (json.success) {
+          console.log('✅ Raw Zernio accounts response for debugging:', json.metrics?.accounts); // remove after verification
+          setZernioMetrics(json.metrics);
+        }
       } catch (e) {
         console.error('Failed to fetch Zernio metrics', e);
       }
@@ -65,10 +68,44 @@ export default function Dashboard() {
     setLoading(false);
   };
 
+  // Totals
   const totalTextItems = textHistory.length;
   const totalVideos = videoHistory.length;
+  const totalAudios = videoHistory.filter((item: any) =>
+    item.amplified_output?.type === 'audio' || item.type === 'audio'
+  ).length;
   const totalClips = videoHistory.reduce((acc, vid) => acc + (vid.clips_generated || 0), 0);
   const totalCaptionsBurned = videoHistory.length;
+
+  // Bulletproof Zernio account normalizer — covers every possible field name Zernio might return
+  const normalizeAccount = (acc: any) => {
+    const avatarUrl =
+      acc.profilePicture ||
+      acc.profile_image ||
+      acc.avatar ||
+      acc.avatar_url ||
+      acc.image ||
+      acc.photo ||
+      acc.profilePhoto ||
+      acc.picture ||
+      acc.profile_pic ||
+      `https://i.pravatar.cc/150?u=${acc.username || acc._id || 'default'}`;
+
+    const displayName = acc.displayName || acc.name || acc.username || acc.full_name || 'Connected Account';
+    const username = acc.username || acc.handle || '';
+    const platform = acc.platform || acc.network || acc.type || 'Social';
+    const followerCount =
+      acc.followersCount ||
+      acc.follower_count ||
+      acc.followers ||
+      acc.followers_count ||
+      acc.followerCount ||
+      acc.subscribers ||
+      acc.subscriber_count ||
+      0;
+
+    return { ...acc, avatarUrl, displayName, username, platform, followerCount };
+  };
 
   if (loading) {
     return (
@@ -129,8 +166,8 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Local Supabase Stats Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-12">
+        {/* Local Supabase Stats Cards — now with Total Audios (top-aligned, uniform) */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-6 mb-12">
           <div className="bg-zinc-900 border border-white/10 rounded-3xl p-8">
             <div className="flex justify-between">
               <div>
@@ -138,6 +175,15 @@ export default function Dashboard() {
                 <p className="text-5xl font-bold text-white mt-2">{totalVideos}</p>
               </div>
               <Video className="w-10 h-10 text-violet-400" />
+            </div>
+          </div>
+          <div className="bg-zinc-900 border border-white/10 rounded-3xl p-8">
+            <div className="flex justify-between">
+              <div>
+                <p className="text-zinc-400 text-sm">Total Audios</p>
+                <p className="text-5xl font-bold text-white mt-2">{totalAudios}</p>
+              </div>
+              <Mic className="w-10 h-10 text-violet-400" />
             </div>
           </div>
           <div className="bg-zinc-900 border border-white/10 rounded-3xl p-8">
@@ -220,40 +266,44 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Accounts */}
+            {/* Connected Accounts — now bulletproof */}
             {zernioMetrics.accounts && zernioMetrics.accounts.length > 0 && (
               <div className="mb-8">
                 <h4 className="text-sm font-medium text-zinc-400 mb-4 flex items-center gap-2">
                   <Users className="w-4 h-4" /> Connected Accounts
                 </h4>
                 <div className="grid md:grid-cols-2 gap-6">
-                  {zernioMetrics.accounts.map((acc: any) => (
-                    <div key={acc._id} className="bg-zinc-900 border border-white/10 rounded-3xl p-6 flex gap-6 items-center">
-                      {acc.profilePicture && (
+                  {zernioMetrics.accounts.map((rawAcc: any) => {
+                    const acc = normalizeAccount(rawAcc);
+                    return (
+                      <div key={acc._id || acc.id} className="bg-zinc-900 border border-white/10 rounded-3xl p-6 flex gap-6 items-center">
                         <img 
-                          src={acc.profilePicture} 
+                          src={acc.avatarUrl} 
                           alt={acc.displayName} 
-                          className="w-12 h-12 rounded-2xl object-cover"
+                          className="w-12 h-12 rounded-2xl object-cover flex-shrink-0"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = `https://i.pravatar.cc/150?u=${acc.username || 'default'}`;
+                          }}
                         />
-                      )}
-                      <div className="flex-1">
-                        <div className="font-semibold">{acc.displayName || acc.username}</div>
-                        <div className="text-sm text-violet-400 uppercase">{acc.platform}</div>
-                        <div className="text-xs text-zinc-400 mt-1">
-                          {acc.followersCount} followers
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold truncate">{acc.displayName}</div>
+                          <div className="text-sm text-violet-400 uppercase truncate">{acc.platform}</div>
+                          <div className="text-xs text-zinc-400 mt-1">
+                            {acc.followerCount.toLocaleString()} followers
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
 
-            {/* Posts (currently empty - normal until you post through Zernio) */}
+            {/* Posts placeholder */}
             {zernioMetrics.posts && zernioMetrics.posts.length > 0 ? (
               <div>
                 <h4 className="text-sm font-medium text-zinc-400 mb-4">Recent Posts</h4>
-                {/* Add post cards here in future iterations */}
+                {/* future post cards */}
               </div>
             ) : (
               <div className="bg-zinc-900 border border-white/10 rounded-3xl p-8 text-center text-zinc-400">

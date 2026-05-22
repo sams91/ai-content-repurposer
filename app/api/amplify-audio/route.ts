@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Could not transcribe audio' }, { status: 422 });
     }
 
-    // === Structured Podcast Generation (All 8 Platforms) ===
+    // === Structured Podcast Generation (All 8 Platforms + TRUE Smart Clips) ===
     const systemPrompt = `You are an expert podcast producer and social media content repurposer.
 
 Given a podcast transcription, create high-quality structured output.
@@ -125,9 +125,11 @@ Return ONLY valid JSON with this exact structure:
   "chapters": [
     { "time": "00:00", "title": "Introduction", "summary": "Brief summary" }
   ],
-  "keyQuotes": ["Most insightful or shareable quote 1", "Quote 2"],
+  "keyQuotes": ["Most insightful quote 1", "Quote 2"],
   "clipIdeas": [
-    { "start": 45, "end": 72, "reason": "Strong hook that grabs attention" }
+    { "duration": "15", "start": 45, "end": 60, "reason": "Strongest hook that grabs attention in first 15 seconds" },
+    { "duration": "30", "start": 120, "end": 150, "reason": "Best 30-second emotional moment" },
+    { "duration": "60", "start": 300, "end": 360, "reason": "Most shareable 60-second story segment" }
   ],
   "platforms": {
     "YouTube": { "title": "...", "description": "..." },
@@ -142,11 +144,10 @@ Return ONLY valid JSON with this exact structure:
 }
 
 Rules:
-- Create 5-8 logical chapters with timestamps.
-- Key quotes should be the most powerful lines.
-- Clip ideas should be 15-90 second moments worth clipping.
-- Optimize each platform properly (YouTube = long description, TikTok/Shorts = punchy hooks, LinkedIn = professional tone, etc.).
-- Always return all 8 platforms in the platforms object.`;
+- clipIdeas MUST contain exactly three entries: one 15s, one 30s, one 60s — the single BEST moment for each duration.
+- Timestamps must be realistic based on total length.
+- Always return all 8 platforms.
+- Optimize tone per platform.`;
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o',
@@ -171,44 +172,40 @@ Rules:
       };
     }
 
-    // Save to video_history (using amplified_output)
+    // === SAVE TO HISTORY (plural amplified_outputs - matches video route) ===
     try {
-      await supabase.from('video_history').insert({
-        user_id: userId,
-        file_name: finalFileName,
-        video_url: publicUrl,
-        transcription: transcriptionText,
-        amplified_output: {
-          type: 'audio',
-          showNotes: structuredOutput.showNotes || '',
-          chapters: structuredOutput.chapters || [],
-          keyQuotes: structuredOutput.keyQuotes || [],
-          clipIdeas: structuredOutput.clipIdeas || [],
-          platforms: structuredOutput.platforms || {}
-        },
-        created_at: new Date().toISOString()
-      });
+      const { error: dbError } = await supabase
+        .from('video_history')
+        .insert({
+          user_id: userId,
+          file_name: finalFileName,
+          video_url: publicUrl,
+          transcription: transcriptionText,
+          amplified_outputs: structuredOutput,
+          duration_seconds: null,
+        });
+
+      if (dbError) console.error('❌ DB insert error:', dbError);
+      else console.log('✅ Audio saved to video_history');
     } catch (dbError) {
       console.error('Failed to save to video_history:', dbError);
-      // Continue even if history save fails
     }
 
     return NextResponse.json({
       success: true,
       transcription: transcriptionText,
-      showNotes: structuredOutput.showNotes,
+      showNotes: structuredOutput.showNotes || '',
       chapters: structuredOutput.chapters || [],
       keyQuotes: structuredOutput.keyQuotes || [],
       clipIdeas: structuredOutput.clipIdeas || [],
       platforms: structuredOutput.platforms || {},
-      audio_url: publicUrl
+      audio_url: publicUrl,
+      file_name: finalFileName,
+      type: 'audio'
     });
 
   } catch (error: any) {
-    console.error('Amplify Audio Error:', error);
-    return NextResponse.json(
-      { error: error.message || 'Failed to process audio' },
-      { status: 500 }
-    );
+    console.error('Amplify audio error:', error);
+    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
   }
 }
