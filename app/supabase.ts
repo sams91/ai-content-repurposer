@@ -18,15 +18,17 @@ export async function loadTextHistory(user_id: string) {
   return data || []
 }
 
-// ====================== VIDEO HISTORY ======================
+// ====================== MEDIA HISTORY (Video + Audio) ======================
 export interface VideoHistoryItem {
   id: string
   user_id: string
   video_url: string
   transcription: string
-  platforms: any[]
+  platforms?: any[]
+  amplified_outputs?: any
   title?: string
   original_filename?: string
+  file_name?: string
   thumbnail_url?: string
   created_at: string
   updated_at?: string
@@ -81,15 +83,33 @@ export async function getVideoHistory(user_id: string): Promise<VideoHistoryItem
   return (data as VideoHistoryItem[]) || []
 }
 
+export function getItemType(item: any): 'text' | 'video' | 'audio' {
+  if (item.type) return item.type
+
+  const filename = (item.file_name || item.original_filename || item.video_url || '').toLowerCase()
+  const url = item.video_url || ''
+
+  // AUDIO = audio-uploads bucket OR pure audio extensions (mp3, wav, etc.)
+  if (
+    url.includes('audio-uploads') ||
+    filename.match(/\.(mp3|wav|m4a|ogg|aac|flac)$/i)
+  ) {
+    return 'audio'
+  }
+
+  // Everything else (including all recording-xxx.webm files) = video
+  return 'video'
+}
+
 export async function getUnifiedHistory(user_id: string) {
-  const [textHistory, videoHistory] = await Promise.all([
+  const [textHistory, mediaHistory] = await Promise.all([
     loadTextHistory(user_id),
     getVideoHistory(user_id),
   ])
 
   const combined = [
     ...textHistory.map(item => ({ ...item, type: 'text' as const })),
-    ...videoHistory.map(item => ({ ...item, type: 'video' as const })),
+    ...mediaHistory.map(item => ({ ...item, type: getItemType(item) })),
   ].sort((a, b) => 
     new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   )
@@ -97,7 +117,7 @@ export async function getUnifiedHistory(user_id: string) {
   return combined
 }
 
-// ====================== SCHEDULED POSTS (NEW) ======================
+// ====================== SCHEDULED POSTS ======================
 export interface ScheduledPostDB {
   id: string
   user_id: string
