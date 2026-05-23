@@ -1,20 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { CalendarIcon, Clock, Filter, FileText, Video, Mic, Plus, Trash2, X, ChevronLeft, ChevronRight, CheckCircle, AlertTriangle, Home, Info, BarChart3, CreditCard } from 'lucide-react';
+import { CalendarIcon, Clock, Filter, FileText, Video, Mic, Plus, Trash2, X, ChevronLeft, ChevronRight, CheckCircle, AlertTriangle, Home, Info, BarChart3, CreditCard, Sparkles } from 'lucide-react';
 import { supabase, getUnifiedHistory, loadScheduledPosts, saveScheduledPost, deleteScheduledPost, getItemType } from '../supabase';
 import { format, formatDistanceToNow, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths } from 'date-fns';
-
-const platformsList = [
-  { value: 'TikTok', label: 'TikTok / Reels (9:16)' },
-  { value: 'YouTube', label: 'YouTube / Shorts (16:9)' },
-  { value: 'Instagram', label: 'Instagram (1:1)' },
-  { value: 'LinkedIn', label: 'LinkedIn (16:9)' },
-  { value: 'X', label: 'X (Twitter)' },
-  { value: 'Rumble', label: 'Rumble (16:9)' },
-  { value: 'Threads', label: 'Threads (1:1)' },
-  { value: 'ShortsReels', label: 'Shorts / Reels (9:16)' },
-];
 
 export default function CalendarPage() {
   const [user, setUser] = useState<any>(null);
@@ -24,7 +13,8 @@ export default function CalendarPage() {
   const [activeFilter, setActiveFilter] = useState<'all' | 'text' | 'video' | 'audio'>('all');
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any>(null);
-  const [selectedPlatform, setSelectedPlatform] = useState('');
+  const [selectedAccountId, setSelectedAccountId] = useState('');
+  const [connectedAccounts, setConnectedAccounts] = useState<any[]>([]);
   const [scheduledAt, setScheduledAt] = useState('');
   const [toast, setToast] = useState<{ message: string; error?: boolean } | null>(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -52,25 +42,43 @@ export default function CalendarPage() {
     setScheduledPosts(posts);
   };
 
+  const fetchConnectedAccounts = async () => {
+    if (!user) return;
+    try {
+      const res = await fetch(`/api/zernio/accounts?user_id=${user.id}`);
+      const data = await res.json();
+      if (data.accounts) setConnectedAccounts(data.accounts);
+    } catch (e) {
+      console.error("Failed to fetch accounts", e);
+    }
+  };
+
   const showToast = (message: string, error = false) => {
     setToast({ message, error });
     setTimeout(() => setToast(null), 4000);
   };
 
   const handleSchedule = async () => {
-    if (!selectedItem || !selectedPlatform || !scheduledAt) return;
+    if (!selectedItem || !selectedAccountId || !scheduledAt) {
+      showToast('Please select a Zernio account and date/time', true);
+      return;
+    }
+
+    const selectedAccount = connectedAccounts.find(a => a._id === selectedAccountId);
+    if (!selectedAccount) return;
+
     try {
       const scheduledDate = new Date(scheduledAt);
       await saveScheduledPost({
         user_id: user.id,
-        history_item: selectedItem,
+        history_item: { ...selectedItem, zernio_account_id: selectedAccountId },
         scheduled_at: scheduledDate.toISOString(),
-        platform: selectedPlatform,
+        platform: selectedAccount.platform,
       });
       showToast(`✅ Scheduled for ${format(scheduledDate, 'MMM dd, yyyy HH:mm')}`);
       setShowScheduleModal(false);
       setSelectedItem(null);
-      setSelectedPlatform('');
+      setSelectedAccountId('');
       setScheduledAt('');
       await loadScheduled();
       setActiveTab('scheduled');
@@ -89,41 +97,47 @@ export default function CalendarPage() {
     return <Video className="w-5 h-5 text-green-400" />;
   };
 
-  // Real monthly calendar grid
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
   const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
 
-  const hasScheduledOnDay = (day: Date) => {
-    return scheduledPosts.some(post => isSameDay(new Date(post.scheduled_at), day));
+  const getScheduledForDay = (day: Date) => {
+    return scheduledPosts.filter(post => isSameDay(new Date(post.scheduled_at), day));
   };
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white">
-      {/* FULL TOP NAV BAR - matches main site */}
-      <nav className="border-b border-zinc-800 bg-zinc-950">
-        <div className="max-w-7xl mx-auto px-8 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-8">
-            <div className="flex items-center gap-2">
-              <span className="text-2xl">✦</span>
-              <span className="font-bold text-2xl tracking-tighter">ContentAmplifier</span>
+      {/* IDENTICAL NAV BAR FROM HOME PAGE */}
+      <nav className="border-b border-white/10 bg-zinc-950/95 backdrop-blur-md sticky top-0 z-50">
+        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <Sparkles className="w-8 h-8 text-violet-400" />
+              <div className="absolute inset-0 bg-violet-400 blur-xl opacity-30 rounded-full" />
             </div>
-            <a href="/" className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors"><Home className="w-5 h-5" /> Home</a>
-            <a href="/why-zernio" className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors"><Info className="w-5 h-5" /> Why Amplify with Zernio</a>
-            <a href="/dashboard" className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors"><BarChart3 className="w-5 h-5" /> Dashboard</a>
-            <a href="/pricing" className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors"><CreditCard className="w-5 h-5" /> Pricing</a>
-            <a href="/calendar" className="flex items-center gap-2 text-blue-400 font-medium"><CalendarIcon className="w-5 h-5 text-blue-400" /> Calendar</a>
-            <a href="/" className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors">History</a>
+            <h1 className="text-2xl font-bold tracking-tighter">ContentAmplifier</h1>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-zinc-400">samsoko91@gmail.com</span>
-            <button className="px-6 py-2 bg-white text-black rounded-2xl font-medium">Sign out</button>
-          </div>
+
+          {user && (
+            <div className="flex items-center gap-6 text-sm">
+              <button onClick={() => window.location.href = '/'} className="hover:text-violet-400 transition">Home</button>
+              <button onClick={() => window.location.href = '/why-amplify'} className="hover:text-violet-400 transition">Why Amplify with Zernio</button>
+              <button onClick={() => window.location.href = '/dashboard'} className="hover:text-violet-400 transition">Dashboard</button>
+              <button onClick={() => window.location.href = '/pricing'} className="hover:text-violet-400 transition">Pricing</button>
+              <button onClick={() => window.location.href = '/calendar'} className="hover:text-violet-400 transition flex items-center gap-1">
+                <Clock className="w-4 h-4" /> Calendar
+              </button>
+
+              <span className="text-zinc-400">{user.email}</span>
+              <button onClick={() => window.location.href = '/'} className="flex items-center gap-2 text-zinc-400 hover:text-white transition">
+                Sign out
+              </button>
+            </div>
+          )}
         </div>
       </nav>
 
       <div className="max-w-7xl mx-auto p-8">
-        {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-4">
             <CalendarIcon className="w-10 h-10 text-blue-400" />
@@ -131,7 +145,6 @@ export default function CalendarPage() {
           </div>
         </div>
 
-        {/* Main Tabs */}
         <div className="flex border-b border-zinc-800 mb-8">
           <button onClick={() => setActiveTab('calendar')} className={`px-8 py-4 text-lg font-medium transition-colors ${activeTab === 'calendar' ? 'border-b-4 border-blue-500 text-white' : 'text-zinc-400 hover:text-white'}`}>Calendar</button>
           <button onClick={() => setActiveTab('content')} className={`px-8 py-4 text-lg font-medium transition-colors ${activeTab === 'content' ? 'border-b-4 border-blue-500 text-white' : 'text-zinc-400 hover:text-white'}`}>Content History</button>
@@ -153,11 +166,21 @@ export default function CalendarPage() {
 
             <div className="grid grid-cols-7 gap-px bg-zinc-800 rounded-3xl overflow-hidden">
               {days.map((day, i) => {
-                const hasItem = hasScheduledOnDay(day);
+                const dayPosts = getScheduledForDay(day);
                 return (
-                  <div key={i} className={`min-h-[120px] p-3 bg-zinc-900 hover:bg-zinc-800 transition-colors flex flex-col ${!isSameMonth(day, currentMonth) ? 'opacity-30' : ''}`}>
-                    <div className="text-right text-sm">{format(day, 'd')}</div>
-                    {hasItem && <div className="mt-auto w-3 h-3 bg-blue-400 rounded-full mx-auto"></div>}
+                  <div key={i} className={`min-h-[160px] p-3 bg-zinc-900 hover:bg-zinc-800 transition-colors flex flex-col ${!isSameMonth(day, currentMonth) ? 'opacity-30' : ''}`}>
+                    <div className="text-right text-sm mb-2">{format(day, 'd')}</div>
+                    <div className="flex-1 space-y-1 overflow-auto">
+                      {dayPosts.length > 0 ? (
+                        dayPosts.map((post: any) => (
+                          <div key={post.id} className="text-xs bg-blue-900/30 text-blue-300 px-2 py-1 rounded-xl line-clamp-2">
+                            {format(new Date(post.scheduled_at), 'HH:mm')} – {post.history_item?.title || post.platform}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-[10px] text-zinc-500 text-center mt-6">—</div>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -219,7 +242,7 @@ export default function CalendarPage() {
           </>
         )}
 
-        {/* SCHEDULED POSTS TAB */}
+        {/* SCHEDULED POSTS TAB (clean production version) */}
         {activeTab === 'scheduled' && (
           <div className="space-y-4">
             {scheduledPosts.length === 0 ? (
@@ -253,7 +276,7 @@ export default function CalendarPage() {
           </div>
         )}
 
-        {/* Schedule Modal */}
+        {/* Schedule Modal – clean production version */}
         {showScheduleModal && selectedItem && (
           <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
             <div className="bg-zinc-900 rounded-3xl w-full max-w-lg mx-4 p-8">
@@ -263,17 +286,28 @@ export default function CalendarPage() {
               </div>
               <div className="space-y-6">
                 <div>
-                  <label className="block text-sm text-zinc-400 mb-2">Platform</label>
-                  <select value={selectedPlatform} onChange={e => setSelectedPlatform(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-4 text-white">
-                    <option value="">Select platform...</option>
-                    {platformsList.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                  <label className="block text-sm text-zinc-400 mb-2">Zernio Connected Account</label>
+                  <select 
+                    value={selectedAccountId} 
+                    onChange={e => setSelectedAccountId(e.target.value)} 
+                    onFocus={fetchConnectedAccounts}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-4 text-white"
+                  >
+                    <option value="">Select account...</option>
+                    {connectedAccounts.map(acc => (
+                      <option key={acc._id} value={acc._id}>
+                        {acc.platform.toUpperCase()} — {acc.name || acc.username || acc._id}
+                      </option>
+                    ))}
                   </select>
                 </div>
+
                 <div>
                   <label className="block text-sm text-zinc-400 mb-2">Schedule date &amp; time</label>
                   <input type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-4 text-white" />
                 </div>
-                <button onClick={handleSchedule} disabled={!selectedPlatform || !scheduledAt} className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-700 py-5 rounded-2xl text-lg font-semibold transition-colors">
+
+                <button onClick={handleSchedule} disabled={!selectedAccountId || !scheduledAt} className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-700 py-5 rounded-2xl text-lg font-semibold transition-colors">
                   Schedule Post
                 </button>
               </div>
