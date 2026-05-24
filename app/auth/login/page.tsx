@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { supabase } from '@/app/supabase';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
 export default function LoginPage() {
@@ -11,7 +10,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,7 +17,6 @@ export default function LoginPage() {
     setMessage(null);
 
     if (isLogin) {
-      // Login with email + password
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -28,12 +25,13 @@ export default function LoginPage() {
       if (error) {
         setMessage({ type: 'error', text: error.message });
       } else {
-        setMessage({ type: 'success', text: '✅ Logged in successfully!' });
-        router.push('/');
-        router.refresh();
+        setMessage({ type: 'success', text: '✅ Logged in successfully! Redirecting...' });
+        // Hard reload guarantees middleware sees the new session cookie
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 300);
       }
     } else {
-      // Sign up with email + password
       const { error } = await supabase.auth.signUp({
         email,
         password,
@@ -45,7 +43,7 @@ export default function LoginPage() {
       if (error) {
         setMessage({ type: 'error', text: error.message });
       } else {
-        setMessage({ type: 'success', text: '✅ Check your email to confirm your account!' });
+        setMessage({ type: 'success', text: '✅ Account created! Check your email to confirm (or sign in if email confirmation is disabled).' });
       }
     }
 
