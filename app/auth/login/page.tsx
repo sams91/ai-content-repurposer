@@ -25,11 +25,7 @@ export default function LoginPage() {
       if (error) {
         setMessage({ type: 'error', text: error.message });
       } else {
-        setMessage({ type: 'success', text: '✅ Logged in successfully! Redirecting...' });
-        // Hard reload guarantees middleware sees the new session cookie
-        setTimeout(() => {
-          window.location.href = '/';
-        }, 300);
+        setMessage({ type: 'success', text: '✅ Logged in successfully!' });
       }
     } else {
       const { error } = await supabase.auth.signUp({
@@ -111,6 +107,18 @@ export default function LoginPage() {
           >
             {message.text}
           </p>
+        )}
+
+        {/* Manual continue button — appears only on success */}
+        {message?.type === 'success' && (
+          <button
+            onClick={() => {
+              window.location.href = '/';
+            }}
+            className="mt-6 w-full py-4 bg-emerald-600 hover:bg-emerald-500 transition rounded-3xl font-semibold text-lg flex items-center justify-center gap-2"
+          >
+            Continue to Dashboard →
+          </button>
         )}
 
         <div className="flex justify-center gap-2 mt-8">

@@ -7,7 +7,7 @@ export async function middleware(request: NextRequest) {
     request,
   })
 
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
 
   const {
     data: { session },
