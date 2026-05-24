@@ -89,7 +89,6 @@ export function getItemType(item: any): 'text' | 'video' | 'audio' {
   const filename = (item.file_name || item.original_filename || item.video_url || '').toLowerCase()
   const url = item.video_url || ''
 
-  // AUDIO = audio-uploads bucket OR pure audio extensions (mp3, wav, etc.)
   if (
     url.includes('audio-uploads') ||
     filename.match(/\.(mp3|wav|m4a|ogg|aac|flac)$/i)
@@ -97,7 +96,6 @@ export function getItemType(item: any): 'text' | 'video' | 'audio' {
     return 'audio'
   }
 
-  // Everything else (including all recording-xxx.webm files) = video
   return 'video'
 }
 
@@ -186,4 +184,50 @@ export async function deleteScheduledPost(id: string) {
     .delete()
     .eq('id', id)
   if (error) console.error('Error deleting scheduled post:', error)
+}
+
+// ====================== NEW: SUBSCRIPTION + TRIAL HELPERS ======================
+export interface SubscriptionStatus {
+  id: string
+  user_id: string
+  lemon_squeezy_subscription_id: string
+  status: 'active' | 'trialing' | 'paused' | 'cancelled' | 'expired'
+  trial_ends_at: string | null
+  current_period_ends_at: string | null
+  variant_id: string
+  created_at: string
+  updated_at: string
+}
+
+export async function getSubscriptionStatus(user_id: string) {
+  const { data, error } = await supabase
+    .from('subscriptions')
+    .select('*')
+    .eq('user_id', user_id)
+    .single()
+
+  if (error || !data) return null
+  return data as SubscriptionStatus
+}
+
+export async function hasActiveAccess(user_id: string): Promise<boolean> {
+  const sub = await getSubscriptionStatus(user_id)
+  if (!sub) return false
+
+  const now = new Date()
+  const trialEnds = sub.trial_ends_at ? new Date(sub.trial_ends_at) : null
+  const periodEnds = sub.current_period_ends_at ? new Date(sub.current_period_ends_at) : null
+
+  if (sub.status === 'trialing' && trialEnds && trialEnds > now) return true
+  if (sub.status === 'active' && periodEnds && periodEnds > now) return true
+
+  return false
+}
+
+export async function upsertSubscription(subscriptionData: any) {
+  const { error } = await supabase
+    .from('subscriptions')
+    .upsert(subscriptionData, { onConflict: 'lemon_squeezy_subscription_id' })
+
+  if (error) console.error('Error upserting subscription:', error)
 }
