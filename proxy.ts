@@ -37,6 +37,7 @@ export async function proxy(request: NextRequest) {
     '/auth',
     '/api/webhooks/lemon',
   ]
+
   if (publicPaths.some((path) => pathname.startsWith(path))) {
     return supabaseResponse
   }

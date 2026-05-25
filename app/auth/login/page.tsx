@@ -1,10 +1,15 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/app/supabase';
 import Link from 'next/link';
 
 export default function LoginPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get('redirectTo') || '/';
+
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -21,15 +26,15 @@ export default function LoginPage() {
         email,
         password,
       });
-
       if (error) {
         setMessage({ type: 'error', text: error.message });
       } else {
         setMessage({ type: 'success', text: '✅ Logged in successfully! Redirecting to dashboard...' });
-        // Hard redirect after a tiny delay to let the cookie propagate
+        // Clean router-based redirect + refresh to ensure middleware and server see the session
         setTimeout(() => {
-          window.location.href = '/';
-        }, 800);
+          router.push(redirectTo);
+          router.refresh();
+        }, 600);
       }
     } else {
       const { error } = await supabase.auth.signUp({
@@ -39,14 +44,12 @@ export default function LoginPage() {
           emailRedirectTo: `${window.location.origin}`,
         },
       });
-
       if (error) {
         setMessage({ type: 'error', text: error.message });
       } else {
         setMessage({ type: 'success', text: '✅ Account created! Check your email to confirm (or sign in if email confirmation is disabled).' });
       }
     }
-
     setLoading(false);
   };
 
@@ -63,7 +66,6 @@ export default function LoginPage() {
               : 'Sign up for ContentAmplifier Pro'}
           </p>
         </div>
-
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <label className="block text-sm font-medium mb-2">Email address</label>
@@ -76,7 +78,6 @@ export default function LoginPage() {
               className="w-full bg-zinc-900 border border-white/10 rounded-3xl px-6 py-4 text-white placeholder-zinc-500 focus:outline-none focus:border-violet-500"
             />
           </div>
-
           <div>
             <label className="block text-sm font-medium mb-2">Password</label>
             <input
@@ -89,7 +90,6 @@ export default function LoginPage() {
               className="w-full bg-zinc-900 border border-white/10 rounded-3xl px-6 py-4 text-white placeholder-zinc-500 focus:outline-none focus:border-violet-500"
             />
           </div>
-
           <button
             type="submit"
             disabled={loading}
@@ -102,7 +102,6 @@ export default function LoginPage() {
                 : 'Create Account'}
           </button>
         </form>
-
         {message && (
           <p
             className={`mt-6 text-center text-sm ${
@@ -112,7 +111,6 @@ export default function LoginPage() {
             {message.text}
           </p>
         )}
-
         <div className="flex justify-center gap-2 mt-8">
           <button
             onClick={() => {
@@ -141,14 +139,12 @@ export default function LoginPage() {
             Sign Up
           </button>
         </div>
-
         <p className="text-center text-xs text-zinc-500 mt-12">
           By signing in you agree to our{' '}
           <Link href="/pricing" className="underline">
             Terms
           </Link>
         </p>
-
         <div className="text-center mt-8">
           <Link
             href="/pricing"
