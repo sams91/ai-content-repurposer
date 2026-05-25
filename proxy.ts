@@ -30,6 +30,11 @@ export async function proxy(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname
 
+  // === NEW: If user is already logged in and tries to visit login, send them to home ===
+  if (pathname.startsWith('/auth/login') && session) {
+    return NextResponse.redirect(new URL('/', request.url))
+  }
+
   // Public pages — no login required
   const publicPaths = [
     '/why-amplify',

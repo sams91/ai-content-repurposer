@@ -1,12 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
+import { useSearchParams } from 'next/navigation';
+import { supabase } from '@/app/supabase';
 import Link from 'next/link';
 
-export default function LoginPage() {
-  const router = useRouter();
+export default function LoginForm() {
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get('redirectTo') || '/';
 
@@ -21,8 +20,6 @@ export default function LoginPage() {
     setLoading(true);
     setMessage(null);
 
-    const supabase = createClient();
-
     if (isLogin) {
       const { error } = await supabase.auth.signInWithPassword({
         email,
@@ -32,8 +29,10 @@ export default function LoginPage() {
         setMessage({ type: 'error', text: error.message });
       } else {
         setMessage({ type: 'success', text: '✅ Logged in successfully! Redirecting to dashboard...' });
-        // Hard redirect (temporary) to ensure cookies are set before middleware runs
-        window.location.href = redirectTo;
+        // The server component will catch this on the next load
+        setTimeout(() => {
+          window.location.href = redirectTo;
+        }, 800);
       }
     } else {
       const { error } = await supabase.auth.signUp({
