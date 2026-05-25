@@ -2,12 +2,9 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { RotateCcw, Copy, Square, Send, Download } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@/lib/supabase/client';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const supabase = createClient();
 
 const MAX_SIZE_MB = 2048;
 

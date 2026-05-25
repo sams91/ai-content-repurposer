@@ -32,8 +32,9 @@ export default function LoginPage() {
         setMessage({ type: 'error', text: error.message });
       } else {
         setMessage({ type: 'success', text: '✅ Logged in successfully! Redirecting to dashboard...' });
-        // Hard redirect (temporary) to ensure cookies are set before middleware runs
-        window.location.href = redirectTo;
+        // Clean SPA redirect now that cookies are guaranteed
+        router.push(redirectTo);
+        router.refresh(); // forces server components + middleware to re-evaluate auth
       }
     } else {
       const { error } = await supabase.auth.signUp({
