@@ -231,3 +231,20 @@ export async function upsertSubscription(subscriptionData: any) {
 
   if (error) console.error('Error upserting subscription:', error)
 }
+
+export async function grantTrialAccess(user_id: string) {
+  const trialEndsAt = new Date()
+  trialEndsAt.setDate(trialEndsAt.getDate() + 14)
+
+  const { error } = await supabase
+    .from('subscriptions')
+    .upsert({
+      user_id,
+      status: 'trialing',
+      trial_ends_at: trialEndsAt.toISOString(),
+      current_period_ends_at: trialEndsAt.toISOString(),
+    }, { onConflict: 'user_id' })
+
+  if (error) console.error('Error granting trial access:', error)
+  return { error }
+}

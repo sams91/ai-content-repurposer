@@ -1,13 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { Sparkles, Check, ArrowRight, Clock, Zap } from 'lucide-react';
+import { Sparkles, Check, ArrowRight, Clock } from 'lucide-react';
 import Link from 'next/link';
 
 export default function Pricing() {
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
 
-  const checkoutUrl = 'https://contentamplifier.lemonsqueezy.com/checkout';
+  // Shared Lemon Squeezy checkout URL (both monthly + annual options appear on Lemon's page)
+  const CHECKOUT_URL = 'https://contentamplifier.lemonsqueezy.com/checkout/buy/5155307f-61ba-440e-b0cd-80ef5c6bcc33';
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white">
@@ -82,11 +83,10 @@ export default function Pricing() {
             </div>
             
             <button
-              onClick={() => window.open(checkoutUrl, '_blank')}
+              onClick={() => window.open(CHECKOUT_URL, '_blank')}
               className="w-full py-4 bg-white text-black rounded-3xl font-semibold text-lg flex items-center justify-center gap-2 hover:bg-zinc-100 transition"
             >
-              Start 14-Day Free Trial
-              <ArrowRight className="w-5 h-5" />
+              Start 14-Day Free Trial →
             </button>
             <p className="text-center text-xs text-zinc-500 mt-6">No card required • Cancel anytime</p>
           </div>
@@ -106,6 +106,7 @@ export default function Pricing() {
               {billingCycle === 'annual' && (
                 <p className="text-emerald-300 text-sm mb-6">Billed annually • Best value</p>
               )}
+              <p className="text-emerald-400 text-sm font-medium mb-8">✅ 14-day free trial included on both plans</p>
               
               <ul className="space-y-4 mb-12 text-sm">
                 <li className="flex items-start gap-3"><Check className="w-5 h-5 text-white mt-0.5" /> Everything in the trial</li>
@@ -116,16 +117,15 @@ export default function Pricing() {
             </div>
 
             <button
-              onClick={() => window.open(checkoutUrl, '_blank')}
+              onClick={() => window.open(CHECKOUT_URL, '_blank')}
               className="w-full py-4 bg-white text-black rounded-3xl font-semibold text-lg flex items-center justify-center gap-2 hover:bg-zinc-100 transition"
             >
-              {billingCycle === 'monthly' ? 'Subscribe Monthly — $15' : 'Subscribe Annually — $153'}
-              <Zap className="w-5 h-5" />
+              Subscribe {billingCycle === 'monthly' ? 'Monthly' : 'Annually'} — ${billingCycle === 'monthly' ? '15' : '153'} →
             </button>
           </div>
         </div>
 
-        <p className="text-center text-zinc-500 text-sm mt-12">
+        <p className="text-center text-xs text-zinc-500 mt-12">
           Secure checkout powered by Lemon Squeezy • Test mode is on • Cancel or pause anytime
         </p>
       </div>
