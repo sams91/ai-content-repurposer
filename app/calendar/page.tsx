@@ -1,17 +1,18 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Sparkles, Clock, LogOut, Calendar as CalendarIcon, List, Send, Plus, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Sparkles, Clock, LogOut, Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { getUnifiedHistory, loadScheduledPosts } from '../supabase';
+import { getUnifiedHistory, loadScheduledPosts, UnifiedHistoryItem, ZernioAccount, ScheduledPostDB } from '../supabase';
 import { formatDistanceToNow } from 'date-fns';
+import type { User } from '@supabase/supabase-js';
 
 const supabase = createClient();
 
 export default function CalendarPage() {
-  const [user, setUser] = useState<any>(null);
-  const [historyItems, setHistoryItems] = useState<any[]>([]);
-  const [scheduledPosts, setScheduledPosts] = useState<any[]>([]);
+  const [user, setUser] = useState<User | null>(null);
+  const [historyItems, setHistoryItems] = useState<UnifiedHistoryItem[]>([]);
+  const [scheduledPosts, setScheduledPosts] = useState<ScheduledPostDB[]>([]);
   const [activeTab, setActiveTab] = useState<'calendar' | 'history' | 'scheduled'>('history');
   const [activeHistoryTab, setActiveHistoryTab] = useState<'all' | 'text' | 'video' | 'audio'>('all');
   const [historySearch, setHistorySearch] = useState<string>('');
@@ -19,31 +20,9 @@ export default function CalendarPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [selectedZernioAccount, setSelectedZernioAccount] = useState<string>('');
-  const [zernioAccounts, setZernioAccounts] = useState<any[]>([]);
+  const [zernioAccounts, setZernioAccounts] = useState<ZernioAccount[]>([]);
 
-  useEffect(() => {
-    const initializeAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      setUser(session?.user ?? null);
-    };
-
-    initializeAuth();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    if (user) {
-      loadHistories();
-      loadScheduled();
-      loadZernioAccounts();
-    }
-  }, [user]);
-
+  // ALL HELPER FUNCTIONS DECLARED FIRST (fixes TDZ)
   const loadHistories = async () => {
     if (!user) return;
     const items = await getUnifiedHistory(user.id);
@@ -62,21 +41,15 @@ export default function CalendarPage() {
       const res = await fetch(`/api/zernio/accounts?user_id=${user.id}`);
       const data = await res.json();
       if (data.accounts) setZernioAccounts(data.accounts);
-    } catch (e) {}
+    } catch (e) {
+      console.error(e);
+    }
   };
-
-  const filteredHistory = historyItems.filter(item => {
-    const searchTerm = historySearch.toLowerCase();
-    const matchesSearch = (item.original_content || item.file_name || '').toLowerCase().includes(searchTerm);
-    if (activeHistoryTab === 'all') return matchesSearch;
-    return matchesSearch && item.type === activeHistoryTab;
-  });
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
   };
 
-  // Calendar grid helpers
   const getDaysInMonth = (date: Date) => {
     const year = date.getFullYear();
     const month = date.getMonth();
@@ -120,7 +93,7 @@ export default function CalendarPage() {
             )}
           </div>
           <div className="flex-1 text-[10px] overflow-hidden">
-            {dayScheduled.slice(0, 2).map((post: any, i: number) => (
+            {dayScheduled.slice(0, 2).map((post, i) => (
               <div key={i} className="truncate text-emerald-400 text-[10px] mt-1">
                 {post.history_item?.file_name || post.history_item?.original_content?.substring(0, 20) || 'Scheduled'}
               </div>
@@ -132,6 +105,37 @@ export default function CalendarPage() {
 
     return days;
   };
+
+  const filteredHistory = historyItems.filter(item => {
+    const searchTerm = historySearch.toLowerCase();
+    const matchesSearch = (item.original_content || item.file_name || '').toLowerCase().includes(searchTerm);
+    if (activeHistoryTab === 'all') return matchesSearch;
+    return matchesSearch && item.type === activeHistoryTab;
+  });
+
+  // Now the useEffects (safe because helpers are already declared)
+  useEffect(() => {
+    const initializeAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setUser(session?.user ?? null);
+    };
+
+    initializeAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+      loadHistories();
+      loadScheduled();
+      loadZernioAccounts();
+    }
+  }, [user]);
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white relative overflow-hidden">

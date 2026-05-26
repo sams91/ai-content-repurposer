@@ -1,10 +1,60 @@
 // app/supabase.ts
-import { createClient } from '@supabase/supabase-js'
+import { createClient as createBrowserClient } from '@/lib/supabase/client'
+import type { User } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+// Use the official shared browser client (eliminates Multiple GoTrueClient warnings)
+export const supabase = createBrowserClient()
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// ====================== STRONG TYPES ======================
+export type PlatformOutputs = Record<string, string>
+
+export interface ZernioAccount {
+  _id: string
+  platform: string
+  name?: string
+  username?: string
+}
+
+export interface PlatformResult {
+  platform: string
+  title?: string
+  description?: string
+  caption?: string
+  hashtags?: string
+  text?: string
+}
+
+export interface SmartClip {
+  url: string
+  duration: number
+  reason: string
+  filename: string
+  transcription?: string
+}
+
+export interface TextHistoryItem {
+  id: string
+  user_id: string
+  original_content: string
+  outputs: PlatformOutputs
+  created_at: string
+  type: 'text'
+}
+
+export interface UnifiedHistoryItem {
+  id: string
+  user_id: string
+  type: 'text' | 'video' | 'audio'
+  created_at: string
+  original_content?: string
+  outputs?: PlatformOutputs
+  video_url?: string
+  file_name?: string
+  transcription?: string
+  thumbnail_url?: string
+  platforms?: any[]
+  [key: string]: any
+}
 
 // ====================== TEXT HISTORY ======================
 export async function loadTextHistory(user_id: string) {
@@ -18,7 +68,7 @@ export async function loadTextHistory(user_id: string) {
   return data || []
 }
 
-// ====================== MEDIA HISTORY (Video + Audio) ======================
+// ====================== MEDIA HISTORY ======================
 export interface VideoHistoryItem {
   id: string
   user_id: string
@@ -83,7 +133,7 @@ export async function getVideoHistory(user_id: string): Promise<VideoHistoryItem
   return (data as VideoHistoryItem[]) || []
 }
 
-export function getItemType(item: any): 'text' | 'video' | 'audio' {
+export function getItemType(item: UnifiedHistoryItem | any): 'text' | 'video' | 'audio' {
   if (item.type) return item.type
 
   const filename = (item.file_name || item.original_filename || item.video_url || '').toLowerCase()
@@ -99,13 +149,13 @@ export function getItemType(item: any): 'text' | 'video' | 'audio' {
   return 'video'
 }
 
-export async function getUnifiedHistory(user_id: string) {
+export async function getUnifiedHistory(user_id: string): Promise<UnifiedHistoryItem[]> {
   const [textHistory, mediaHistory] = await Promise.all([
     loadTextHistory(user_id),
     getVideoHistory(user_id),
   ])
 
-  const combined = [
+  const combined: UnifiedHistoryItem[] = [
     ...textHistory.map(item => ({ ...item, type: 'text' as const })),
     ...mediaHistory.map(item => ({ ...item, type: getItemType(item) })),
   ].sort((a, b) => 
@@ -119,7 +169,7 @@ export async function getUnifiedHistory(user_id: string) {
 export interface ScheduledPostDB {
   id: string
   user_id: string
-  history_item: any
+  history_item: UnifiedHistoryItem
   scheduled_at: string
   platform: string
   status: 'pending' | 'posted' | 'failed'
@@ -133,7 +183,7 @@ export async function saveScheduledPost({
   platform,
 }: {
   user_id: string
-  history_item: any
+  history_item: UnifiedHistoryItem
   scheduled_at: string
   platform: string
 }) {

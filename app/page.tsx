@@ -3,10 +3,11 @@
 import { useState, useEffect } from 'react';
 import { Sparkles, ArrowRight, CheckCircle, RefreshCw, LogOut, Clock, Upload, Copy, RotateCw, Share2, Video, Play, Zap, Send, HelpCircle, Trash2, Search, Download, Mic } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { getUnifiedHistory } from './supabase';
+import { getUnifiedHistory, UnifiedHistoryItem, ZernioAccount, PlatformOutputs, SmartClip } from './supabase';
 import VideoRecorder from '@/components/VideoRecorder';
 import AudioProcessor from '@/components/AudioProcessor';
 import { formatDistanceToNow } from 'date-fns';
+import type { User } from '@supabase/supabase-js';
 
 const supabase = createClient();
 
@@ -25,13 +26,14 @@ export default function Home() {
 
   const [content, setContent] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [result, setResult] = useState<Record<string, any> | null>(null);
-  const [user, setUser] = useState<any>(null);
+  const [result, setResult] = useState<PlatformOutputs | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
-  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(false);
-  const [historyItems, setHistoryItems] = useState<any[]>([]); // unified history
+  const [isAuthLoadingState, setIsAuthLoadingState] = useState<boolean>(false);
+  const [historyItems, setHistoryItems] = useState<UnifiedHistoryItem[]>([]);
   const [showHistory, setShowHistory] = useState<boolean>(false);
   const [activeHistoryTab, setActiveHistoryTab] = useState<'all' | 'text' | 'video' | 'audio'>('all');
   const [isDragging, setIsDragging] = useState<boolean>(false);
@@ -47,7 +49,7 @@ export default function Home() {
   const [showZernioHelpModal, setShowZernioHelpModal] = useState(false);
 
   // Text Mode Zernio auto-fetch
-  const [textConnectedAccounts, setTextConnectedAccounts] = useState<any[]>([]);
+  const [textConnectedAccounts, setTextConnectedAccounts] = useState<ZernioAccount[]>([]);
   const [showTextZernioModal, setShowTextZernioModal] = useState(false);
   const [selectedTextAccountId, setSelectedTextAccountId] = useState('');
 
@@ -58,13 +60,12 @@ export default function Home() {
 
   // Smart Clipping states
   const [generatingClipsFor, setGeneratingClipsFor] = useState<string | null>(null);
-  const [clipModal, setClipModal] = useState<{ id: string; clips: any[]; type: 'video' | 'audio' } | null>(null);
+  const [clipModal, setClipModal] = useState<{ id: string; clips: SmartClip[]; type: 'video' | 'audio' } | null>(null);
 
   // Burn-in Captions + Thumbnail states
   const [burningCaptionsFor, setBurningCaptionsFor] = useState<string | null>(null);
   const [generatingThumbnailFor, setGeneratingThumbnailFor] = useState<string | null>(null);
 
-  // FIXED: loadHistories declared BEFORE useEffect
   const loadHistories = async () => {
     if (!user) return;
     const items = await getUnifiedHistory(user.id);
@@ -83,12 +84,14 @@ export default function Home() {
     const initializeAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       setUser(session?.user ?? null);
+      setIsAuthLoading(false);
     };
 
     initializeAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
+      setIsAuthLoading(false);
     });
 
     return () => subscription.unsubscribe();
@@ -143,7 +146,7 @@ export default function Home() {
           videoUrl: url, 
           videoId: id, 
           fileName, 
-          userId: user.id,
+          userId: user!.id,
           transcription: transcription || '',
           type
         }),
@@ -292,7 +295,7 @@ export default function Home() {
   };
 
   const handleAuth = async () => {
-    setIsAuthLoading(true);
+    setIsAuthLoadingState(true);
     try {
       if (authMode === 'signup') {
         const { error } = await supabase.auth.signUp({ email, password });
@@ -305,7 +308,7 @@ export default function Home() {
     } catch {
       alert("Something went wrong");
     }
-    setIsAuthLoading(false);
+    setIsAuthLoadingState(false);
   };
 
   const handleSignOut = async () => {
@@ -406,7 +409,7 @@ export default function Home() {
     if (file) handleFileUpload(file);
   };
 
-  const copyToClipboard = async (text: any, label: string) => {
+  const copyToClipboard = async (text: string | PlatformOutputs[keyof PlatformOutputs], label: string) => {
     const safeText = typeof text === 'string' ? text : JSON.stringify(text, null, 2);
     try {
       await navigator.clipboard.writeText(safeText.trim());
@@ -498,7 +501,6 @@ export default function Home() {
     }
   };
 
-  // Filter helpers – now uses unified type from supabase.ts
   const filteredText = historyItems.filter(item => item.type === 'text' && 
     (item.original_content || '').toLowerCase().includes(historySearch.toLowerCase())
   );
@@ -551,7 +553,11 @@ export default function Home() {
       </nav>
 
       <main className="max-w-6xl mx-auto px-6 py-16 relative">
-        {!user ? (
+        {isAuthLoading ? (
+          <div className="min-h-[60vh] flex items-center justify-center">
+            <RefreshCw className="w-8 h-8 animate-spin text-violet-400" />
+          </div>
+        ) : !user ? (
           <div className="max-w-md mx-auto bg-zinc-900/90 border border-white/10 rounded-3xl p-10 backdrop-blur-sm">
             <h2 className="text-3xl font-bold text-center mb-8">
               {authMode === 'signin' ? 'Welcome back' : 'Create your account'}
@@ -574,10 +580,10 @@ export default function Home() {
 
               <button 
                 onClick={handleAuth} 
-                disabled={isAuthLoading} 
+                disabled={isAuthLoadingState} 
                 className="w-full bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:brightness-110 py-4 rounded-2xl font-semibold transition disabled:opacity-70"
               >
-                {isAuthLoading ? 'Processing...' : authMode === 'signin' ? 'Sign In' : 'Sign Up'}
+                {isAuthLoadingState ? 'Processing...' : authMode === 'signin' ? 'Sign In' : 'Sign Up'}
               </button>
 
               <p 
@@ -622,15 +628,17 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* TEXT MODE — Teams-style unified input + Start Over */}
+              {/* TEXT MODE */}
               {activeMode === 'text' && (
                 <div className="max-w-3xl mx-auto">
+                  {/* ... your full Text Mode UI exactly as before ... */}
                   <div 
                     className={`border-2 border-dashed transition-all rounded-3xl p-8 bg-zinc-900/90 border-white/10 ${isDragging ? 'border-violet-500 bg-violet-500/10' : ''}`}
                     onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                     onDragLeave={() => setIsDragging(false)}
                     onDrop={handleDrop}
                   >
+                    {/* ... full textarea + upload + button ... */}
                     <div className="text-center mb-6">
                       <Upload className="w-10 h-10 mx-auto mb-3 text-violet-400" />
                       <p className="text-lg font-medium">Drop DOCX or TXT here</p>
@@ -647,7 +655,6 @@ export default function Home() {
                     <div className="flex justify-between items-center mt-4">
                       <div className="flex items-center gap-3">
                         <span className="text-xs text-zinc-400">{content.length} characters</span>
-                        
                         <input 
                           type="file" 
                           accept=".docx,.txt" 
@@ -679,6 +686,7 @@ export default function Home() {
 
                   {result && (
                     <div className="mt-12">
+                      {/* ... full result UI with Zernio modal etc. ... */}
                       <div className="flex justify-between items-center mb-8">
                         <h3 className="text-2xl font-semibold flex items-center gap-3">
                           <CheckCircle className="text-emerald-500" /> Amplified Content
@@ -707,7 +715,7 @@ export default function Home() {
                           </button>
                         </div>
                       </div>
-                      
+                      {/* ... rest of the result grid and modals exactly as in your original ... */}
                       {shareLink && (
                         <div className="mb-8 p-4 bg-zinc-900 border border-violet-500/30 rounded-2xl text-sm">
                           Share Link: <span className="text-violet-400 font-mono break-all">{shareLink}</span>
@@ -797,7 +805,7 @@ export default function Home() {
                 </div>
               )}
 
-              {/* AUDIO MODE — Podcast / Voiceover Mode */}
+              {/* AUDIO MODE */}
               {activeMode === 'audio' && (
                 <div className="max-w-4xl mx-auto">
                   <AudioProcessor onAmplifySuccess={handleAmplifySuccess} />
@@ -805,9 +813,10 @@ export default function Home() {
               )}
             </div>
 
-            {/* History sidebar */}
+            {/* History sidebar - full original code exactly as before */}
             {showHistory && (
               <div className="w-96 bg-zinc-950 border-l border-white/10 p-6 overflow-auto h-screen sticky top-0">
+                {/* ... full history sidebar code exactly as in your original paste ... */}
                 <div className="flex justify-between items-center mb-6">
                   <h3 className="text-2xl font-bold flex items-center gap-2">
                     <Clock className="w-5 h-5" /> History
@@ -840,7 +849,7 @@ export default function Home() {
                   ))}
                 </div>
 
-                {/* VIDEOS SECTION */}
+                {/* VIDEOS SECTION - full original */}
                 {(activeHistoryTab === 'all' || activeHistoryTab === 'video') && (
                   <div className="mb-10">
                     <h4 className="uppercase text-xs tracking-widest text-zinc-500 mb-4 flex items-center gap-2">
@@ -849,11 +858,11 @@ export default function Home() {
                     {filteredVideoItems.length === 0 && historyItems.length > 0 && (
                       <p className="text-zinc-500 py-8 text-center">No matching videos</p>
                     )}
-                    {filteredVideoItems.map((vid: any) => (
+                    {filteredVideoItems.map((vid) => (
                       <div key={vid.id} className="bg-zinc-900 rounded-3xl overflow-hidden mb-6 group">
                         <div 
                           className="relative aspect-video bg-black cursor-pointer"
-                          onClick={() => setPreviewVideo({ url: vid.video_url, name: vid.file_name || 'Video' })}
+                          onClick={() => setPreviewVideo({ url: vid.video_url!, name: vid.file_name || 'Video' })}
                         >
                           <img 
                             src={vid.thumbnail_url || vid.video_url} 
@@ -891,7 +900,7 @@ export default function Home() {
                             <select
                               onChange={(e) => {
                                 if (e.target.value) {
-                                  optimizeAndDownload(vid.video_url, e.target.value, vid.file_name || 'video');
+                                  optimizeAndDownload(vid.video_url!, e.target.value, vid.file_name || 'video');
                                   e.target.value = '';
                                 }
                               }}
@@ -908,7 +917,7 @@ export default function Home() {
                           </div>
 
                           <button
-                            onClick={() => generateSmartClips(vid.video_url, vid.id, vid.file_name, vid.transcription, 'video')}
+                            onClick={() => generateSmartClips(vid.video_url!, vid.id, vid.file_name!, vid.transcription, 'video')}
                             disabled={generatingClipsFor === vid.id}
                             className="mt-4 w-full bg-emerald-600 hover:bg-emerald-700 text-xs py-3 rounded-2xl flex items-center justify-center gap-2 transition-all disabled:opacity-50"
                           >
@@ -924,7 +933,7 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* AUDIO SECTION */}
+                {/* AUDIO SECTION - full original */}
                 {(activeHistoryTab === 'all' || activeHistoryTab === 'audio') && (
                   <div className="mb-10">
                     <h4 className="uppercase text-xs tracking-widest text-zinc-500 mb-4 flex items-center gap-2">
@@ -933,7 +942,7 @@ export default function Home() {
                     {filteredAudioItems.length === 0 && historyItems.length > 0 && (
                       <p className="text-zinc-500 py-8 text-center">No matching audio files</p>
                     )}
-                    {filteredAudioItems.map((aud: any) => (
+                    {filteredAudioItems.map((aud) => (
                       <div key={aud.id} className="bg-zinc-900 rounded-3xl overflow-hidden mb-6 group">
                         <div className="p-4 bg-black">
                           <audio 
@@ -963,7 +972,7 @@ export default function Home() {
                           )}
 
                           <button
-                            onClick={() => generateSmartClips(aud.video_url, aud.id, aud.file_name, aud.transcription, 'audio')}
+                            onClick={() => generateSmartClips(aud.video_url!, aud.id, aud.file_name!, aud.transcription, 'audio')}
                             disabled={generatingClipsFor === aud.id}
                             className="mt-4 w-full bg-emerald-600 hover:bg-emerald-700 text-xs py-3 rounded-2xl flex items-center justify-center gap-2 transition-all disabled:opacity-50"
                           >
@@ -989,7 +998,7 @@ export default function Home() {
                       <div 
                         key={item.id} 
                         onClick={() => { 
-                          setContent(item.original_content); 
+                          setContent(item.original_content!); 
                           setShowHistory(false); 
                           window.scrollTo({ top: 0, behavior: 'smooth' }); 
                         }}
@@ -1022,7 +1031,7 @@ export default function Home() {
         )}
       </main>
 
-      {/* Zernio API Key Modal */}
+      {/* Zernio API Key Modal - full original */}
       {showZernioKeyModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
           <div className="bg-zinc-900 rounded-3xl p-8 max-w-md w-full mx-4">
@@ -1064,7 +1073,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* Zernio Instructions Modal */}
+      {/* Zernio Instructions Modal - full original */}
       {showZernioHelpModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
           <div className="bg-zinc-900 rounded-3xl p-8 max-w-2xl w-full mx-4 max-h-[90vh] overflow-auto">
@@ -1132,7 +1141,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* Video/Audio preview modal */}
+      {/* Video/Audio preview modal - full original */}
       {previewVideo && (
         <div 
           className="fixed inset-0 bg-black/90 flex items-center justify-center z-[9999] p-4"
@@ -1165,7 +1174,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* Smart Clips Modal - NOW DYNAMIC + AUDIO-FRIENDLY */}
+      {/* Smart Clips Modal - full original */}
       {clipModal && (
         <div 
           className="fixed inset-0 bg-black/90 flex items-center justify-center z-[10000] p-4"
@@ -1182,7 +1191,7 @@ export default function Home() {
               <button onClick={() => setClipModal(null)} className="text-zinc-400 hover:text-white">✕</button>
             </div>
             <div className="p-6 space-y-6 max-h-[70vh] overflow-auto">
-              {clipModal.clips.map((clip: any, i: number) => (
+              {clipModal.clips.map((clip: SmartClip, i: number) => (
                 <div key={i} className="flex gap-4 bg-zinc-900 rounded-3xl p-4">
                   <div className="flex-1">
                     {clipModal.type === 'video' ? (
@@ -1197,7 +1206,6 @@ export default function Home() {
                       <p className="text-xs text-zinc-400 line-clamp-4 mt-2">{clip.reason}</p>
                     </div>
 
-                    {/* Only show Burn Captions + Thumbnail for VIDEO */}
                     {clipModal.type === 'video' && (
                       <>
                         <button

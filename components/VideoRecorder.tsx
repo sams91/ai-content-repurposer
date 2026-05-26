@@ -3,26 +3,12 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { RotateCcw, Copy, Square, Send, Download } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import type { User } from '@supabase/supabase-js';
+import { ZernioAccount, PlatformResult } from '@/app/supabase';   // fixed import path
 
 const supabase = createClient();
 
 const MAX_SIZE_MB = 2048;
-
-interface PlatformResult {
-  platform: string;
-  title?: string;
-  description?: string;
-  caption?: string;
-  hashtags?: string;
-  text?: string;
-}
-
-interface ConnectedAccount {
-  _id: string;
-  platform: string;
-  name?: string;
-  username?: string;
-}
 
 export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?: () => void }) {
   const [videoBlob, setVideoBlob] = useState<Blob | null>(null);
@@ -35,9 +21,9 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
   const [transcription, setTranscription] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-  const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
+  const [connectedAccounts, setConnectedAccounts] = useState<ZernioAccount[]>([]);
   const [showZernioModal, setShowZernioModal] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState('');
 
@@ -233,7 +219,7 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
         body: JSON.stringify({
           video_url: videoPublicUrl,
           platform: platform.toLowerCase(),
-          user_id: currentUser.id,
+          user_id: currentUser!.id,
         }),
       });
 
@@ -412,7 +398,7 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
                 <Copy size={18} /> Copy All Results
               </button>
 
-              {/* Download dropdown - individual platforms only */}
+              {/* Download dropdown */}
               <div className="relative">
                 <button
                   onClick={() => setShowDownloadDropdown(!showDownloadDropdown)}
