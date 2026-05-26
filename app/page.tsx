@@ -25,10 +25,6 @@ export default function Home() {
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [result, setResult] = useState<Record<string, any> | null>(null);
   const [user, setUser] = useState<any>(null);
-  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
-  const [email, setEmail] = useState<string>('');
-  const [password, setPassword] = useState<string>('');
-  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(false);
   const [historyItems, setHistoryItems] = useState<any[]>([]); // unified history
   const [showHistory, setShowHistory] = useState<boolean>(false);
   const [activeHistoryTab, setActiveHistoryTab] = useState<'all' | 'text' | 'video' | 'audio'>('all');
@@ -285,23 +281,6 @@ export default function Home() {
     }
   };
 
-  const handleAuth = async () => {
-    setIsAuthLoading(true);
-    try {
-      if (authMode === 'signup') {
-        const { error } = await supabase.auth.signUp({ email, password });
-        if (error) alert(error.message);
-        else alert("Check your email for confirmation link!");
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) alert(error.message);
-      }
-    } catch {
-      alert("Something went wrong");
-    }
-    setIsAuthLoading(false);
-  };
-
   const handleSignOut = async () => {
     await supabase.auth.signOut();
   };
@@ -545,475 +524,436 @@ export default function Home() {
       </nav>
 
       <main className="max-w-6xl mx-auto px-6 py-16 relative">
-        {!user ? (
-          <div className="max-w-md mx-auto bg-zinc-900/90 border border-white/10 rounded-3xl p-10 backdrop-blur-sm">
-            <h2 className="text-3xl font-bold text-center mb-8">
-              {authMode === 'signin' ? 'Welcome back' : 'Create your account'}
-            </h2>
-            <div className="space-y-6">
-              <input 
-                type="email" 
-                placeholder="Email address" 
-                value={email} 
-                onChange={(e) => setEmail(e.target.value)} 
-                className="w-full bg-zinc-950 border border-white/10 rounded-2xl px-6 py-4 focus:outline-none focus:border-violet-500" 
-              />
-              <input 
-                type="password" 
-                placeholder="Password" 
-                value={password} 
-                onChange={(e) => setPassword(e.target.value)} 
-                className="w-full bg-zinc-950 border border-white/10 rounded-2xl px-6 py-4 focus:outline-none focus:border-violet-500" 
-              />
-
-              <button 
-                onClick={handleAuth} 
-                disabled={isAuthLoading} 
-                className="w-full bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:brightness-110 py-4 rounded-2xl font-semibold transition disabled:opacity-70"
-              >
-                {isAuthLoading ? 'Processing...' : authMode === 'signin' ? 'Sign In' : 'Sign Up'}
-              </button>
-
-              <p 
-                onClick={() => setAuthMode(authMode === 'signin' ? 'signup' : 'signin')} 
-                className="text-center text-sm text-zinc-400 hover:text-white cursor-pointer transition"
-              >
-                {authMode === 'signin' ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
-              </p>
+        <div className="flex gap-8">
+          <div className="flex-1">
+            <div className="text-center mb-16">
+              <h2 className="text-6xl font-bold tracking-tighter mb-6 bg-gradient-to-r from-white via-violet-200 to-white bg-clip-text text-transparent">
+                One piece of content.<br />Infinite possibilities.
+              </h2>
+              <p className="text-xl text-zinc-400">Amplify your reach across the digital universe</p>
             </div>
-          </div>
-        ) : (
-          <div className="flex gap-8">
-            <div className="flex-1">
-              <div className="text-center mb-16">
-                <h2 className="text-6xl font-bold tracking-tighter mb-6 bg-gradient-to-r from-white via-violet-200 to-white bg-clip-text text-transparent">
-                  One piece of content.<br />Infinite possibilities.
-                </h2>
-                <p className="text-xl text-zinc-400">Amplify your reach across the digital universe</p>
+
+            {/* Mode Tabs */}
+            <div className="flex justify-center mb-8">
+              <div className="inline-flex bg-zinc-900 border border-white/10 rounded-3xl p-1">
+                <button
+                  onClick={() => setActiveMode('text')}
+                  className={`px-8 py-3 rounded-3xl flex items-center gap-2 transition-all ${activeMode === 'text' ? 'bg-white text-black font-medium' : 'hover:bg-white/10'}`}
+                >
+                  📝 Text Mode
+                </button>
+                <button
+                  onClick={() => setActiveMode('video')}
+                  className={`px-8 py-3 rounded-3xl flex items-center gap-2 transition-all ${activeMode === 'video' ? 'bg-white text-black font-medium' : 'hover:bg-white/10'}`}
+                >
+                  <Video className="w-5 h-5" /> Video Mode
+                </button>
+                <button
+                  onClick={() => setActiveMode('audio')}
+                  className={`px-8 py-3 rounded-3xl flex items-center gap-2 transition-all ${activeMode === 'audio' ? 'bg-white text-black font-medium' : 'hover:bg-white/10'}`}
+                >
+                  <Mic className="w-5 h-5" /> Audio Mode
+                </button>
               </div>
+            </div>
 
-              {/* Mode Tabs */}
-              <div className="flex justify-center mb-8">
-                <div className="inline-flex bg-zinc-900 border border-white/10 rounded-3xl p-1">
-                  <button
-                    onClick={() => setActiveMode('text')}
-                    className={`px-8 py-3 rounded-3xl flex items-center gap-2 transition-all ${activeMode === 'text' ? 'bg-white text-black font-medium' : 'hover:bg-white/10'}`}
-                  >
-                    📝 Text Mode
-                  </button>
-                  <button
-                    onClick={() => setActiveMode('video')}
-                    className={`px-8 py-3 rounded-3xl flex items-center gap-2 transition-all ${activeMode === 'video' ? 'bg-white text-black font-medium' : 'hover:bg-white/10'}`}
-                  >
-                    <Video className="w-5 h-5" /> Video Mode
-                  </button>
-                  <button
-                    onClick={() => setActiveMode('audio')}
-                    className={`px-8 py-3 rounded-3xl flex items-center gap-2 transition-all ${activeMode === 'audio' ? 'bg-white text-black font-medium' : 'hover:bg-white/10'}`}
-                  >
-                    <Mic className="w-5 h-5" /> Audio Mode
-                  </button>
-                </div>
-              </div>
-
-              {/* TEXT MODE — Teams-style unified input + Start Over */}
-              {activeMode === 'text' && (
-                <div className="max-w-3xl mx-auto">
-                  <div 
-                    className={`border-2 border-dashed transition-all rounded-3xl p-8 bg-zinc-900/90 border-white/10 ${isDragging ? 'border-violet-500 bg-violet-500/10' : ''}`}
-                    onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                    onDragLeave={() => setIsDragging(false)}
-                    onDrop={handleDrop}
-                  >
-                    <div className="text-center mb-6">
-                      <Upload className="w-10 h-10 mx-auto mb-3 text-violet-400" />
-                      <p className="text-lg font-medium">Drop DOCX or TXT here</p>
-                      <p className="text-sm text-zinc-400">or paste your content below</p>
-                    </div>
-
-                    <textarea 
-                      value={content} 
-                      onChange={(e) => setContent(e.target.value)} 
-                      placeholder="Start typing or drop a file directly into this box..." 
-                      className="w-full h-64 bg-zinc-950 border border-white/10 rounded-2xl p-6 text-lg placeholder-zinc-500 focus:outline-none focus:border-violet-500 resize-none"
-                    />
-
-                    <div className="flex justify-between items-center mt-4">
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs text-zinc-400">{content.length} characters</span>
-                        
-                        <input 
-                          type="file" 
-                          accept=".docx,.txt" 
-                          onChange={(e) => e.target.files && handleFileUpload(e.target.files[0])} 
-                          className="hidden" 
-                          id="file-upload" 
-                        />
-                        <label 
-                          htmlFor="file-upload" 
-                          className="cursor-pointer flex items-center gap-2 text-sm text-violet-400 hover:text-violet-300 transition"
-                        >
-                          <Upload className="w-4 h-4" /> Select File
-                        </label>
-                      </div>
-
-                      <button 
-                        onClick={() => handleRepurpose()} 
-                        disabled={isProcessing || !content.trim()} 
-                        className="bg-gradient-to-r from-violet-600 via-fuchsia-600 to-violet-600 hover:brightness-110 disabled:bg-zinc-700 px-8 py-3 rounded-2xl font-semibold flex items-center justify-center gap-3 transition-all shadow-lg shadow-violet-500/30"
-                      >
-                        {isProcessing ? (
-                          <>Amplifying <RefreshCw className="w-4 h-4 animate-spin" /></>
-                        ) : (
-                          <>Amplify Content <ArrowRight className="w-4 h-4" /></>
-                        )}
-                      </button>
-                    </div>
+            {/* TEXT MODE — Teams-style unified input + Start Over */}
+            {activeMode === 'text' && (
+              <div className="max-w-3xl mx-auto">
+                <div 
+                  className={`border-2 border-dashed transition-all rounded-3xl p-8 bg-zinc-900/90 border-white/10 ${isDragging ? 'border-violet-500 bg-violet-500/10' : ''}`}
+                  onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={handleDrop}
+                >
+                  <div className="text-center mb-6">
+                    <Upload className="w-10 h-10 mx-auto mb-3 text-violet-400" />
+                    <p className="text-lg font-medium">Drop DOCX or TXT here</p>
+                    <p className="text-sm text-zinc-400">or paste your content below</p>
                   </div>
 
-                  {result && (
-                    <div className="mt-12">
-                      <div className="flex justify-between items-center mb-8">
-                        <h3 className="text-2xl font-semibold flex items-center gap-3">
-                          <CheckCircle className="text-emerald-500" /> Amplified Content
-                        </h3>
-                        <div className="flex gap-3">
-                          <button onClick={copyAll} disabled={isCopyingAll} className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 px-5 py-2 rounded-2xl text-sm transition">
-                            <Copy className="w-4 h-4" /> {isCopyingAll ? "Copying..." : "Copy All"}
-                          </button>
-                          <button onClick={generateShareLink} className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 px-5 py-2 rounded-2xl text-sm transition">
-                            <Share2 className="w-4 h-4" /> Share
-                          </button>
-                          <button
-                            onClick={() => {
-                              fetchTextConnectedAccounts();
-                              setShowTextZernioModal(true);
-                            }}
-                            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 px-5 py-2 rounded-2xl text-sm font-semibold"
-                          >
-                            <Send className="w-4 h-4" /> Post with Zernio
-                          </button>
-                          <button
-                            onClick={startOverText}
-                            className="flex items-center gap-2 bg-zinc-800 hover:bg-red-600/20 hover:text-red-400 px-5 py-2 rounded-2xl text-sm transition"
-                          >
-                            <Trash2 className="w-4 h-4" /> Start Over
-                          </button>
-                        </div>
-                      </div>
-                      
-                      {shareLink && (
-                        <div className="mb-8 p-4 bg-zinc-900 border border-violet-500/30 rounded-2xl text-sm">
-                          Share Link: <span className="text-violet-400 font-mono break-all">{shareLink}</span>
-                        </div>
-                      )}
-
-                      <div className="grid md:grid-cols-2 gap-6">
-                        {Object.entries(result).map(([platform, text]) => {
-                          const isX = platform === 'twitter';
-                          const displayName = platform === 'twitter' ? 'X' : platform.charAt(0).toUpperCase() + platform.slice(1);
-                          const safeText = typeof text === 'string' ? text : JSON.stringify(text, null, 2);
-
-                          return (
-                            <div key={platform} className="bg-zinc-900 border border-white/10 rounded-2xl p-6 group relative hover:border-violet-400/50 transition-all">
-                              <div className="flex items-center justify-between mb-4">
-                                <div className="flex items-center gap-3">
-                                  {isX && (
-                                    <div className="w-6 h-6 bg-white rounded flex items-center justify-center">
-                                      <span className="text-black font-black text-2xl leading-none">𝕏</span>
-                                    </div>
-                                  )}
-                                  <p className="uppercase text-sm text-violet-400 tracking-widest font-medium">
-                                    {displayName}
-                                  </p>
-                                </div>
-                                <div className="flex gap-2">
-                                  <button 
-                                    onClick={() => regeneratePlatform(platform)} 
-                                    className="opacity-0 group-hover:opacity-100 transition text-xs px-3 py-1 rounded-full hover:bg-zinc-800 flex items-center gap-1"
-                                  >
-                                    <RotateCw className="w-3 h-3" /> Regenerate
-                                  </button>
-                                  <button 
-                                    onClick={() => copyToClipboard(text, displayName)} 
-                                    className="opacity-0 group-hover:opacity-100 transition bg-zinc-800 hover:bg-zinc-700 text-xs px-4 py-1.5 rounded-full flex items-center gap-1.5"
-                                  >
-                                    📋 Copy
-                                  </button>
-                                </div>
-                              </div>
-                              <p className="text-zinc-300 text-sm leading-relaxed whitespace-pre-wrap">
-                                {safeText}
-                              </p>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {showTextZernioModal && (
-                        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-                          <div className="bg-zinc-900 rounded-3xl p-8 max-w-md w-full mx-4">
-                            <h3 className="text-2xl font-bold mb-6">Post to Zernio</h3>
-                            <div className="space-y-6">
-                              <div>
-                                <label className="block text-sm text-zinc-400 mb-1">Connected Account</label>
-                                <select
-                                  value={selectedTextAccountId}
-                                  onChange={(e) => setSelectedTextAccountId(e.target.value)}
-                                  className="w-full bg-zinc-950 border border-white/10 rounded-2xl px-4 py-3 focus:outline-none"
-                                >
-                                  <option value="">Select account...</option>
-                                  {textConnectedAccounts.map((acc) => (
-                                    <option key={acc._id} value={acc._id}>
-                                      {acc.platform.toUpperCase()} — {acc.name || acc.username || acc._id}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-
-                              <div className="flex gap-3 pt-4">
-                                <button onClick={() => setShowTextZernioModal(false)} className="flex-1 py-4 border border-white/20 rounded-2xl hover:bg-white/5">Cancel</button>
-                                <button onClick={postTextToZernio} disabled={!selectedTextAccountId} className="flex-1 py-4 bg-emerald-600 hover:bg-emerald-700 rounded-2xl font-semibold disabled:opacity-50">Post Now</button>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* VIDEO MODE */}
-              {activeMode === 'video' && (
-                <div className="max-w-4xl mx-auto">
-                  <VideoRecorder onAmplifySuccess={handleAmplifySuccess} />
-                </div>
-              )}
-
-              {/* AUDIO MODE — Podcast / Voiceover Mode */}
-              {activeMode === 'audio' && (
-                <div className="max-w-4xl mx-auto">
-                  <AudioProcessor onAmplifySuccess={handleAmplifySuccess} />
-                </div>
-              )}
-            </div>
-
-            {/* History sidebar */}
-            {showHistory && (
-              <div className="w-96 bg-zinc-950 border-l border-white/10 p-6 overflow-auto h-screen sticky top-0">
-                <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-2xl font-bold flex items-center gap-2">
-                    <Clock className="w-5 h-5" /> History
-                  </h3>
-                  <button onClick={() => setShowHistory(false)} className="text-zinc-400 hover:text-white">✕</button>
-                </div>
-
-                <div className="relative mb-6">
-                  <Search className="absolute left-4 top-3.5 w-4 h-4 text-zinc-400" />
-                  <input
-                    type="text"
-                    placeholder="Search history..."
-                    value={historySearch}
-                    onChange={(e) => setHistorySearch(e.target.value)}
-                    className="w-full bg-zinc-900 border border-white/10 rounded-3xl pl-11 py-3 text-sm focus:outline-none focus:border-violet-400"
+                  <textarea 
+                    value={content} 
+                    onChange={(e) => setContent(e.target.value)} 
+                    placeholder="Start typing or drop a file directly into this box..." 
+                    className="w-full h-64 bg-zinc-950 border border-white/10 rounded-2xl p-6 text-lg placeholder-zinc-500 focus:outline-none focus:border-violet-500 resize-none"
                   />
-                </div>
 
-                <div className="flex gap-2 mb-6 bg-zinc-900 p-1 rounded-3xl">
-                  {(['all', 'text', 'video', 'audio'] as const).map((tab) => (
-                    <button
-                      key={tab}
-                      onClick={() => setActiveHistoryTab(tab)}
-                      className={`flex-1 py-3 rounded-3xl text-sm font-medium transition-all ${
-                        activeHistoryTab === tab ? 'bg-violet-600 text-white' : 'hover:bg-white/5'
-                      }`}
-                    >
-                      {tab === 'all' ? 'All' : tab === 'text' ? 'Text' : tab === 'video' ? 'Videos' : 'Audio'}
-                    </button>
-                  ))}
-                </div>
-
-                {/* VIDEOS SECTION */}
-                {(activeHistoryTab === 'all' || activeHistoryTab === 'video') && (
-                  <div className="mb-10">
-                    <h4 className="uppercase text-xs tracking-widest text-zinc-500 mb-4 flex items-center gap-2">
-                      <Video className="w-4 h-4" /> Videos
-                    </h4>
-                    {filteredVideoItems.length === 0 && historyItems.length > 0 && (
-                      <p className="text-zinc-500 py-8 text-center">No matching videos</p>
-                    )}
-                    {filteredVideoItems.map((vid: any) => (
-                      <div key={vid.id} className="bg-zinc-900 rounded-3xl overflow-hidden mb-6 group">
-                        <div 
-                          className="relative aspect-video bg-black cursor-pointer"
-                          onClick={() => setPreviewVideo({ url: vid.video_url, name: vid.file_name || 'Video' })}
-                        >
-                          <img 
-                            src={vid.thumbnail_url || vid.video_url} 
-                            alt="" 
-                            className="w-full h-full object-cover" 
-                          />
-                          <div className="absolute inset-0 flex items-center justify-center bg-black/40 group-hover:bg-black/30 transition-all">
-                            <Play className="w-12 h-12 text-white drop-shadow-lg" />
-                          </div>
-                        </div>
-                        <div className="p-4">
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <p className="font-medium text-sm line-clamp-1">{vid.file_name || 'Recorded video'}</p>
-                              <p className="text-xs text-zinc-500">
-                                {formatDistanceToNow(new Date(vid.created_at), { addSuffix: true })}
-                              </p>
-                            </div>
-                            <button 
-                              onClick={() => deleteHistoryItem(vid.id, 'video')} 
-                              disabled={deletingId === vid.id}
-                              className="text-red-400 hover:text-red-500 transition"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                          {vid.transcription && (
-                            <p className="text-xs text-zinc-400 mt-3 line-clamp-2">{vid.transcription}</p>
-                          )}
-
-                          <div className="mt-4">
-                            <label className="block text-xs text-zinc-400 mb-1 flex items-center gap-1">
-                              <Download className="w-3 h-3" /> Download formatted for…
-                            </label>
-                            <select
-                              onChange={(e) => {
-                                if (e.target.value) {
-                                  optimizeAndDownload(vid.video_url, e.target.value, vid.file_name || 'video');
-                                  e.target.value = '';
-                                }
-                              }}
-                              style={{ colorScheme: 'dark' }}
-                              className="w-full bg-zinc-900 text-white border border-white/10 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-violet-400 transition-colors"
-                            >
-                              <option value="">Choose platform…</option>
-                              {platforms.map((p) => (
-                                <option key={p.value} value={p.value}>
-                                  {p.label}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-
-                          <button
-                            onClick={() => generateSmartClips(vid.video_url, vid.id, vid.file_name, vid.transcription, 'video')}
-                            disabled={generatingClipsFor === vid.id}
-                            className="mt-4 w-full bg-emerald-600 hover:bg-emerald-700 text-xs py-3 rounded-2xl flex items-center justify-center gap-2 transition-all disabled:opacity-50"
-                          >
-                            {generatingClipsFor === vid.id ? (
-                              <>Generating clips <RefreshCw className="w-3 h-3 animate-spin" /></>
-                            ) : (
-                              <>✂️ Smart Clips (15/30/60s hooks)</>
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* AUDIO SECTION */}
-                {(activeHistoryTab === 'all' || activeHistoryTab === 'audio') && (
-                  <div className="mb-10">
-                    <h4 className="uppercase text-xs tracking-widest text-zinc-500 mb-4 flex items-center gap-2">
-                      <Mic className="w-4 h-4" /> Audio
-                    </h4>
-                    {filteredAudioItems.length === 0 && historyItems.length > 0 && (
-                      <p className="text-zinc-500 py-8 text-center">No matching audio files</p>
-                    )}
-                    {filteredAudioItems.map((aud: any) => (
-                      <div key={aud.id} className="bg-zinc-900 rounded-3xl overflow-hidden mb-6 group">
-                        <div className="p-4 bg-black">
-                          <audio 
-                            controls 
-                            className="w-full"
-                            src={aud.video_url}
-                          />
-                        </div>
-                        <div className="p-4">
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <p className="font-medium text-sm line-clamp-1">{aud.file_name || 'Recorded audio'}</p>
-                              <p className="text-xs text-zinc-500">
-                                {formatDistanceToNow(new Date(aud.created_at), { addSuffix: true })}
-                              </p>
-                            </div>
-                            <button 
-                              onClick={() => deleteHistoryItem(aud.id, 'audio')} 
-                              disabled={deletingId === aud.id}
-                              className="text-red-400 hover:text-red-500 transition"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                          {aud.transcription && (
-                            <p className="text-xs text-zinc-400 mt-3 line-clamp-2">{aud.transcription}</p>
-                          )}
-
-                          <button
-                            onClick={() => generateSmartClips(aud.video_url, aud.id, aud.file_name, aud.transcription, 'audio')}
-                            disabled={generatingClipsFor === aud.id}
-                            className="mt-4 w-full bg-emerald-600 hover:bg-emerald-700 text-xs py-3 rounded-2xl flex items-center justify-center gap-2 transition-all disabled:opacity-50"
-                          >
-                            {generatingClipsFor === aud.id ? (
-                              <>Generating clips <RefreshCw className="w-3 h-3 animate-spin" /></>
-                            ) : (
-                              <>✂️ Smart Clips (15/30/60s hooks)</>
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {(activeHistoryTab === 'all' || activeHistoryTab === 'text') && (
-                  <div>
-                    <h4 className="uppercase text-xs tracking-widest text-zinc-500 mb-4">Text Content</h4>
-                    {filteredText.length === 0 && historyItems.length > 0 && (
-                      <p className="text-zinc-500 py-8 text-center">No matching text</p>
-                    )}
-                    {filteredText.map((item) => (
-                      <div 
-                        key={item.id} 
-                        onClick={() => { 
-                          setContent(item.original_content); 
-                          setShowHistory(false); 
-                          window.scrollTo({ top: 0, behavior: 'smooth' }); 
-                        }}
-                        className="bg-zinc-900 rounded-3xl p-5 mb-4 cursor-pointer hover:bg-zinc-800 group relative"
+                  <div className="flex justify-between items-center mt-4">
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-zinc-400">{content.length} characters</span>
+                      
+                      <input 
+                        type="file" 
+                        accept=".docx,.txt" 
+                        onChange={(e) => e.target.files && handleFileUpload(e.target.files[0])} 
+                        className="hidden" 
+                        id="file-upload" 
+                      />
+                      <label 
+                        htmlFor="file-upload" 
+                        className="cursor-pointer flex items-center gap-2 text-sm text-violet-400 hover:text-violet-300 transition"
                       >
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deleteHistoryItem(item.id, 'text');
-                          }}
-                          className="absolute top-4 right-4 text-red-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                        <p className="line-clamp-3 text-sm text-zinc-300">{item.original_content}</p>
-                        <p className="text-xs text-zinc-500 mt-3">
-                          {formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                        <Upload className="w-4 h-4" /> Select File
+                      </label>
+                    </div>
 
-                {filteredText.length === 0 && filteredVideoItems.length === 0 && filteredAudioItems.length === 0 && historyItems.length === 0 && (
-                  <p className="text-center py-20 text-zinc-500">Your amplified content will appear here</p>
+                    <button 
+                      onClick={() => handleRepurpose()} 
+                      disabled={isProcessing || !content.trim()} 
+                      className="bg-gradient-to-r from-violet-600 via-fuchsia-600 to-violet-600 hover:brightness-110 disabled:bg-zinc-700 px-8 py-3 rounded-2xl font-semibold flex items-center justify-center gap-3 transition-all shadow-lg shadow-violet-500/30"
+                    >
+                      {isProcessing ? (
+                        <>Amplifying <RefreshCw className="w-4 h-4 animate-spin" /></>
+                      ) : (
+                        <>Amplify Content <ArrowRight className="w-4 h-4" /></>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {result && (
+                  <div className="mt-12">
+                    <div className="flex justify-between items-center mb-8">
+                      <h3 className="text-2xl font-semibold flex items-center gap-3">
+                        <CheckCircle className="text-emerald-500" /> Amplified Content
+                      </h3>
+                      <div className="flex gap-3">
+                        <button onClick={copyAll} disabled={isCopyingAll} className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 px-5 py-2 rounded-2xl text-sm transition">
+                          <Copy className="w-4 h-4" /> {isCopyingAll ? "Copying..." : "Copy All"}
+                        </button>
+                        <button onClick={generateShareLink} className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 px-5 py-2 rounded-2xl text-sm transition">
+                          <Share2 className="w-4 h-4" /> Share
+                        </button>
+                        <button
+                          onClick={() => {
+                            fetchTextConnectedAccounts();
+                            setShowTextZernioModal(true);
+                          }}
+                          className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 px-5 py-2 rounded-2xl text-sm font-semibold"
+                        >
+                          <Send className="w-4 h-4" /> Post with Zernio
+                        </button>
+                        <button
+                          onClick={startOverText}
+                          className="flex items-center gap-2 bg-zinc-800 hover:bg-red-600/20 hover:text-red-400 px-5 py-2 rounded-2xl text-sm transition"
+                        >
+                          <Trash2 className="w-4 h-4" /> Start Over
+                        </button>
+                      </div>
+                    </div>
+                    
+                    {shareLink && (
+                      <div className="mb-8 p-4 bg-zinc-900 border border-violet-500/30 rounded-2xl text-sm">
+                        Share Link: <span className="text-violet-400 font-mono break-all">{shareLink}</span>
+                      </div>
+                    )}
+
+                    <div className="grid md:grid-cols-2 gap-6">
+                      {Object.entries(result).map(([platform, text]) => {
+                        const isX = platform === 'twitter';
+                        const displayName = platform === 'twitter' ? 'X' : platform.charAt(0).toUpperCase() + platform.slice(1);
+                        const safeText = typeof text === 'string' ? text : JSON.stringify(text, null, 2);
+
+                        return (
+                          <div key={platform} className="bg-zinc-900 border border-white/10 rounded-2xl p-6 group relative hover:border-violet-400/50 transition-all">
+                            <div className="flex items-center justify-between mb-4">
+                              <div className="flex items-center gap-3">
+                                {isX && (
+                                  <div className="w-6 h-6 bg-white rounded flex items-center justify-center">
+                                    <span className="text-black font-black text-2xl leading-none">𝕏</span>
+                                  </div>
+                                )}
+                                <p className="uppercase text-sm text-violet-400 tracking-widest font-medium">
+                                  {displayName}
+                                </p>
+                              </div>
+                              <div className="flex gap-2">
+                                <button 
+                                  onClick={() => regeneratePlatform(platform)} 
+                                  className="opacity-0 group-hover:opacity-100 transition text-xs px-3 py-1 rounded-full hover:bg-zinc-800 flex items-center gap-1"
+                                >
+                                  <RotateCw className="w-3 h-3" /> Regenerate
+                                </button>
+                                <button 
+                                  onClick={() => copyToClipboard(text, displayName)} 
+                                  className="opacity-0 group-hover:opacity-100 transition bg-zinc-800 hover:bg-zinc-700 text-xs px-4 py-1.5 rounded-full flex items-center gap-1.5"
+                                >
+                                  📋 Copy
+                                </button>
+                              </div>
+                            </div>
+                            <p className="text-zinc-300 text-sm leading-relaxed whitespace-pre-wrap">
+                              {safeText}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {showTextZernioModal && (
+                      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+                        <div className="bg-zinc-900 rounded-3xl p-8 max-w-md w-full mx-4">
+                          <h3 className="text-2xl font-bold mb-6">Post to Zernio</h3>
+                          <div className="space-y-6">
+                            <div>
+                              <label className="block text-sm text-zinc-400 mb-1">Connected Account</label>
+                              <select
+                                value={selectedTextAccountId}
+                                onChange={(e) => setSelectedTextAccountId(e.target.value)}
+                                className="w-full bg-zinc-950 border border-white/10 rounded-2xl px-4 py-3 focus:outline-none"
+                              >
+                                <option value="">Select account...</option>
+                                {textConnectedAccounts.map((acc) => (
+                                  <option key={acc._id} value={acc._id}>
+                                    {acc.platform.toUpperCase()} — {acc.name || acc.username || acc._id}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div className="flex gap-3 pt-4">
+                              <button onClick={() => setShowTextZernioModal(false)} className="flex-1 py-4 border border-white/20 rounded-2xl hover:bg-white/5">Cancel</button>
+                              <button onClick={postTextToZernio} disabled={!selectedTextAccountId} className="flex-1 py-4 bg-emerald-600 hover:bg-emerald-700 rounded-2xl font-semibold disabled:opacity-50">Post Now</button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             )}
+
+            {/* VIDEO MODE */}
+            {activeMode === 'video' && (
+              <div className="max-w-4xl mx-auto">
+                <VideoRecorder onAmplifySuccess={handleAmplifySuccess} />
+              </div>
+            )}
+
+            {/* AUDIO MODE — Podcast / Voiceover Mode */}
+            {activeMode === 'audio' && (
+              <div className="max-w-4xl mx-auto">
+                <AudioProcessor onAmplifySuccess={handleAmplifySuccess} />
+              </div>
+            )}
           </div>
-        )}
+
+          {/* History sidebar */}
+          {showHistory && (
+            <div className="w-96 bg-zinc-950 border-l border-white/10 p-6 overflow-auto h-screen sticky top-0">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-2xl font-bold flex items-center gap-2">
+                  <Clock className="w-5 h-5" /> History
+                </h3>
+                <button onClick={() => setShowHistory(false)} className="text-zinc-400 hover:text-white">✕</button>
+              </div>
+
+              <div className="relative mb-6">
+                <Search className="absolute left-4 top-3.5 w-4 h-4 text-zinc-400" />
+                <input
+                  type="text"
+                  placeholder="Search history..."
+                  value={historySearch}
+                  onChange={(e) => setHistorySearch(e.target.value)}
+                  className="w-full bg-zinc-900 border border-white/10 rounded-3xl pl-11 py-3 text-sm focus:outline-none focus:border-violet-400"
+                />
+              </div>
+
+              <div className="flex gap-2 mb-6 bg-zinc-900 p-1 rounded-3xl">
+                {(['all', 'text', 'video', 'audio'] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveHistoryTab(tab)}
+                    className={`flex-1 py-3 rounded-3xl text-sm font-medium transition-all ${
+                      activeHistoryTab === tab ? 'bg-violet-600 text-white' : 'hover:bg-white/5'
+                    }`}
+                  >
+                    {tab === 'all' ? 'All' : tab === 'text' ? 'Text' : tab === 'video' ? 'Videos' : 'Audio'}
+                  </button>
+                ))}
+              </div>
+
+              {/* VIDEOS SECTION */}
+              {(activeHistoryTab === 'all' || activeHistoryTab === 'video') && (
+                <div className="mb-10">
+                  <h4 className="uppercase text-xs tracking-widest text-zinc-500 mb-4 flex items-center gap-2">
+                    <Video className="w-4 h-4" /> Videos
+                  </h4>
+                  {filteredVideoItems.length === 0 && historyItems.length > 0 && (
+                    <p className="text-zinc-500 py-8 text-center">No matching videos</p>
+                  )}
+                  {filteredVideoItems.map((vid: any) => (
+                    <div key={vid.id} className="bg-zinc-900 rounded-3xl overflow-hidden mb-6 group">
+                      <div 
+                        className="relative aspect-video bg-black cursor-pointer"
+                        onClick={() => setPreviewVideo({ url: vid.video_url, name: vid.file_name || 'Video' })}
+                      >
+                        <img 
+                          src={vid.thumbnail_url || vid.video_url} 
+                          alt="" 
+                          className="w-full h-full object-cover" 
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/40 group-hover:bg-black/30 transition-all">
+                          <Play className="w-12 h-12 text-white drop-shadow-lg" />
+                        </div>
+                      </div>
+                      <div className="p-4">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="font-medium text-sm line-clamp-1">{vid.file_name || 'Recorded video'}</p>
+                            <p className="text-xs text-zinc-500">
+                              {formatDistanceToNow(new Date(vid.created_at), { addSuffix: true })}
+                            </p>
+                          </div>
+                          <button 
+                            onClick={() => deleteHistoryItem(vid.id, 'video')} 
+                            disabled={deletingId === vid.id}
+                            className="text-red-400 hover:text-red-500 transition"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                        {vid.transcription && (
+                          <p className="text-xs text-zinc-400 mt-3 line-clamp-2">{vid.transcription}</p>
+                        )}
+
+                        <div className="mt-4">
+                          <label className="block text-xs text-zinc-400 mb-1 flex items-center gap-1">
+                            <Download className="w-3 h-3" /> Download formatted for…
+                          </label>
+                          <select
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                optimizeAndDownload(vid.video_url, e.target.value, vid.file_name || 'video');
+                                e.target.value = '';
+                              }
+                            }}
+                            style={{ colorScheme: 'dark' }}
+                            className="w-full bg-zinc-900 text-white border border-white/10 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-violet-400 transition-colors"
+                          >
+                            <option value="">Choose platform…</option>
+                            {platforms.map((p) => (
+                              <option key={p.value} value={p.value}>
+                                {p.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <button
+                          onClick={() => generateSmartClips(vid.video_url, vid.id, vid.file_name, vid.transcription, 'video')}
+                          disabled={generatingClipsFor === vid.id}
+                          className="mt-4 w-full bg-emerald-600 hover:bg-emerald-700 text-xs py-3 rounded-2xl flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                        >
+                          {generatingClipsFor === vid.id ? (
+                            <>Generating clips <RefreshCw className="w-3 h-3 animate-spin" /></>
+                          ) : (
+                            <>✂️ Smart Clips (15/30/60s hooks)</>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* AUDIO SECTION */}
+              {(activeHistoryTab === 'all' || activeHistoryTab === 'audio') && (
+                <div className="mb-10">
+                  <h4 className="uppercase text-xs tracking-widest text-zinc-500 mb-4 flex items-center gap-2">
+                    <Mic className="w-4 h-4" /> Audio
+                  </h4>
+                  {filteredAudioItems.length === 0 && historyItems.length > 0 && (
+                    <p className="text-zinc-500 py-8 text-center">No matching audio files</p>
+                  )}
+                  {filteredAudioItems.map((aud: any) => (
+                    <div key={aud.id} className="bg-zinc-900 rounded-3xl overflow-hidden mb-6 group">
+                      <div className="p-4 bg-black">
+                        <audio 
+                          controls 
+                          className="w-full"
+                          src={aud.video_url}
+                        />
+                      </div>
+                      <div className="p-4">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="font-medium text-sm line-clamp-1">{aud.file_name || 'Recorded audio'}</p>
+                            <p className="text-xs text-zinc-500">
+                              {formatDistanceToNow(new Date(aud.created_at), { addSuffix: true })}
+                            </p>
+                          </div>
+                          <button 
+                            onClick={() => deleteHistoryItem(aud.id, 'audio')} 
+                            disabled={deletingId === aud.id}
+                            className="text-red-400 hover:text-red-500 transition"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                        {aud.transcription && (
+                          <p className="text-xs text-zinc-400 mt-3 line-clamp-2">{aud.transcription}</p>
+                        )}
+
+                        <button
+                          onClick={() => generateSmartClips(aud.video_url, aud.id, aud.file_name, aud.transcription, 'audio')}
+                          disabled={generatingClipsFor === aud.id}
+                          className="mt-4 w-full bg-emerald-600 hover:bg-emerald-700 text-xs py-3 rounded-2xl flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                        >
+                          {generatingClipsFor === aud.id ? (
+                            <>Generating clips <RefreshCw className="w-3 h-3 animate-spin" /></>
+                          ) : (
+                            <>✂️ Smart Clips (15/30/60s hooks)</>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {(activeHistoryTab === 'all' || activeHistoryTab === 'text') && (
+                <div>
+                  <h4 className="uppercase text-xs tracking-widest text-zinc-500 mb-4">Text Content</h4>
+                  {filteredText.length === 0 && historyItems.length > 0 && (
+                    <p className="text-zinc-500 py-8 text-center">No matching text</p>
+                  )}
+                  {filteredText.map((item) => (
+                    <div 
+                      key={item.id} 
+                      onClick={() => { 
+                        setContent(item.original_content); 
+                        setShowHistory(false); 
+                        window.scrollTo({ top: 0, behavior: 'smooth' }); 
+                      }}
+                      className="bg-zinc-900 rounded-3xl p-5 mb-4 cursor-pointer hover:bg-zinc-800 group relative"
+                    >
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteHistoryItem(item.id, 'text');
+                        }}
+                        className="absolute top-4 right-4 text-red-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                      <p className="line-clamp-3 text-sm text-zinc-300">{item.original_content}</p>
+                      <p className="text-xs text-zinc-500 mt-3">
+                        {formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {filteredText.length === 0 && filteredVideoItems.length === 0 && filteredAudioItems.length === 0 && historyItems.length === 0 && (
+                <p className="text-center py-20 text-zinc-500">Your amplified content will appear here</p>
+              )}
+            </div>
+          )}
+        </div>
       </main>
 
       {/* Zernio API Key Modal */}

@@ -186,7 +186,7 @@ export async function deleteScheduledPost(id: string) {
   if (error) console.error('Error deleting scheduled post:', error)
 }
 
-// ====================== NEW: SUBSCRIPTION + TRIAL HELPERS ======================
+// ====================== SUBSCRIPTION + TRIAL HELPERS ======================
 export interface SubscriptionStatus {
   id: string
   user_id: string
