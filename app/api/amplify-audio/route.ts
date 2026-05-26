@@ -74,7 +74,8 @@ export async function POST(request: NextRequest) {
 
     if (needsConversion) {
       try {
-        processedBuffer = await convertToMp3(audioBuffer, originalFileName);
+        // Explicit type assertion to satisfy strict Buffer typing on Vercel
+        processedBuffer = await convertToMp3(audioBuffer, originalFileName) as Buffer;
         finalFileName = originalFileName.replace(/\.[^/.]+$/, '') + '.mp3';
       } catch (convertError) {
         console.warn('Audio conversion failed, using original file');
@@ -113,7 +114,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Could not transcribe audio' }, { status: 422 });
     }
 
-    // === Structured Podcast Generation (All 8 Platforms + TRUE Smart Clips) ===
+    // === Structured Podcast Generation ===
     const systemPrompt = `You are an expert podcast producer and social media content repurposer.
 
 Given a podcast transcription, create high-quality structured output.
@@ -144,7 +145,7 @@ Return ONLY valid JSON with this exact structure:
 }
 
 Rules:
-- clipIdeas MUST contain exactly three entries: one 15s, one 30s, one 60s — the single BEST moment for each duration.
+- clipIdeas MUST contain exactly three entries: one 15s, one 30s, one 60s.
 - Timestamps must be realistic based on total length.
 - Always return all 8 platforms.
 - Optimize tone per platform.`;
@@ -172,7 +173,7 @@ Rules:
       };
     }
 
-    // === SAVE TO HISTORY (plural amplified_outputs - matches video route) ===
+    // === SAVE TO HISTORY ===
     try {
       const { error: dbError } = await supabase
         .from('video_history')
