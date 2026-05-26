@@ -30,7 +30,12 @@ export async function proxy(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname
 
-  // === Public pages — no login required ===
+  // === Existing logic from your proxy.ts ===
+  if (pathname.startsWith('/auth/login') && session) {
+    return NextResponse.redirect(new URL('/', request.url))
+  }
+
+  // Public pages — no login required
   const publicPaths = [
     '/why-amplify',
     '/pricing',
@@ -49,16 +54,12 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl)
   }
 
-  // === Lifetime free access for developer (Sam) ===
-  if (session.user.email === 'samsoko91@gmail.com') {
-    return supabaseResponse
-  }
-
-  // === Subscription / Trial check (no auto-grant) ===
+  // === NEW: Subscription / Trial check + AUTO-GRANT 14-DAY TRIAL ===
+  // TS null guard satisfied with non-null assertion (session is guaranteed here)
   const { data: subscription } = await supabase
     .from('subscriptions')
     .select('status, trial_ends_at, current_period_ends_at')
-    .eq('user_id', session.user.id)
+    .eq('user_id', session!.user.id)
     .single()
 
   const now = new Date()
@@ -66,6 +67,23 @@ export async function proxy(request: NextRequest) {
     subscription?.status === 'active' ||
     (subscription?.trial_ends_at && new Date(subscription.trial_ends_at) > now) ||
     (subscription?.current_period_ends_at && new Date(subscription.current_period_ends_at) > now)
+
+  // Auto-grant 14-day trial for brand-new users
+  if (!subscription || !hasActiveAccess) {
+    const trialEndsAt = new Date()
+    trialEndsAt.setDate(trialEndsAt.getDate() + 14)
+
+    await supabase
+      .from('subscriptions')
+      .upsert({
+        user_id: session!.user.id,
+        status: 'trialing',
+        trial_ends_at: trialEndsAt.toISOString(),
+        current_period_ends_at: trialEndsAt.toISOString(),
+      }, { onConflict: 'user_id' })
+
+    hasActiveAccess = true
+  }
 
   if (!hasActiveAccess) {
     const redirectUrl = new URL('/pricing', request.url)
@@ -78,6 +96,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|mp4|webm|mov|avi|ogg)$).*)',
   ],
 }

@@ -8,7 +8,7 @@ export async function GET(request: Request) {
   const token_hash = requestUrl.searchParams.get('token_hash')
   const type = requestUrl.searchParams.get('type') ?? 'magiclink'
 
-  const cookieStore = cookies()
+  const cookieStore = await cookies()
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

@@ -223,7 +223,6 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
     }
   };
 
-  // FIXED: Blob-based download forces actual file save (no full-screen video player)
   const optimizeAndDownload = async (platform: string) => {
     if (!videoPublicUrl) return;
     setIsOptimizing(true);
@@ -240,7 +239,6 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
 
       const data = await res.json();
       if (data.success && data.optimized_url) {
-        // Fetch as blob → force download
         const fileRes = await fetch(data.optimized_url);
         const blob = await fileRes.blob();
         const blobUrl = URL.createObjectURL(blob);
@@ -253,7 +251,6 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
         link.click();
         document.body.removeChild(link);
 
-        // Clean up blob URL
         URL.revokeObjectURL(blobUrl);
 
         alert(data.message || `✅ Optimized for ${platform.toUpperCase()}`);

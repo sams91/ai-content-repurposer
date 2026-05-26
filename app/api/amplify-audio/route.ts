@@ -61,11 +61,11 @@ export async function POST(request: NextRequest) {
     }
 
     const arrayBuffer = await audioFile.arrayBuffer();
-    let audioBuffer = Buffer.from(arrayBuffer);
+    let audioBuffer: Buffer = Buffer.from(new Uint8Array(arrayBuffer));
     const originalFileName = audioFile.name || `audio-${Date.now()}.webm`;
 
     // Convert to MP3 when needed
-    let processedBuffer = audioBuffer;
+    let processedBuffer: Buffer = audioBuffer;
     let finalFileName = originalFileName;
 
     const needsConversion = audioFile.type.includes('webm') || 
@@ -74,7 +74,6 @@ export async function POST(request: NextRequest) {
 
     if (needsConversion) {
       try {
-        // Explicit type assertion to satisfy strict Buffer typing on Vercel
         processedBuffer = await convertToMp3(audioBuffer, originalFileName) as Buffer;
         finalFileName = originalFileName.replace(/\.[^/.]+$/, '') + '.mp3';
       } catch (convertError) {
@@ -103,7 +102,7 @@ export async function POST(request: NextRequest) {
 
     // === Whisper Transcription ===
     const transcriptionResponse = await openai.audio.transcriptions.create({
-      file: new File([processedBuffer], finalFileName, { type: 'audio/mpeg' }),
+      file: new File([new Uint8Array(processedBuffer)], finalFileName, { type: 'audio/mpeg' }),
       model: 'whisper-1',
       response_format: 'verbose_json',
     });
@@ -114,7 +113,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Could not transcribe audio' }, { status: 422 });
     }
 
-    // === Structured Podcast Generation ===
+    // === Structured Podcast Generation (All 8 Platforms + TRUE Smart Clips) ===
     const systemPrompt = `You are an expert podcast producer and social media content repurposer.
 
 Given a podcast transcription, create high-quality structured output.
@@ -145,7 +144,7 @@ Return ONLY valid JSON with this exact structure:
 }
 
 Rules:
-- clipIdeas MUST contain exactly three entries: one 15s, one 30s, one 60s.
+- clipIdeas MUST contain exactly three entries: one 15s, one 30s, one 60s — the single BEST moment for each duration.
 - Timestamps must be realistic based on total length.
 - Always return all 8 platforms.
 - Optimize tone per platform.`;
@@ -173,7 +172,7 @@ Rules:
       };
     }
 
-    // === SAVE TO HISTORY ===
+    // === SAVE TO HISTORY (plural amplified_outputs - matches video route) ===
     try {
       const { error: dbError } = await supabase
         .from('video_history')

@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { Sparkles, ArrowRight, LogOut, Zap, CheckCircle, Calendar, Send, Shield, Gift, HelpCircle, Mic, Video, FileText, Upload, Type, Play, Music } from 'lucide-react';
-import { supabase } from '../supabase';
+import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
+
+const supabase = createClient();
 
 export default function WhyAmplify() {
   const [user, setUser] = useState<any>(null);
@@ -61,11 +63,12 @@ export default function WhyAmplify() {
             <button onClick={() => window.location.href = '/'} className="hover:text-violet-400 transition">Home</button>
             <button onClick={() => window.location.href = '/why-amplify'} className="text-violet-400 font-medium">Why Amplify with Zernio</button>
             <button onClick={() => window.location.href = '/pricing'} className="hover:text-violet-400 transition">Pricing</button>
-            <button onClick={() => window.location.href = '/auth/login'} className="hover:text-violet-400 transition">Login</button>
-            {user && (
+            {user ? (
               <button onClick={handleSignOut} className="flex items-center gap-2 text-zinc-400 hover:text-white transition">
                 <LogOut className="w-4 h-4" /> Sign out
               </button>
+            ) : (
+              <button onClick={() => window.location.href = '/auth/login'} className="hover:text-violet-400 transition">Login</button>
             )}
           </div>
         </div>
