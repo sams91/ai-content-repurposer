@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Sparkles, ArrowRight, LogOut, Zap, CheckCircle, Calendar, Send, Shield, Gift, HelpCircle, Mic, Video, FileText, Upload, Type, Play, Music } from 'lucide-react';
 import { supabase } from '../supabase';
+import Link from 'next/link';
 
 export default function WhyAmplify() {
   const [user, setUser] = useState<any>(null);
@@ -60,6 +61,7 @@ export default function WhyAmplify() {
             <button onClick={() => window.location.href = '/'} className="hover:text-violet-400 transition">Home</button>
             <button onClick={() => window.location.href = '/why-amplify'} className="text-violet-400 font-medium">Why Amplify with Zernio</button>
             <button onClick={() => window.location.href = '/pricing'} className="hover:text-violet-400 transition">Pricing</button>
+            <button onClick={() => window.location.href = '/auth/login'} className="hover:text-violet-400 transition">Login</button>
             {user && (
               <button onClick={handleSignOut} className="flex items-center gap-2 text-zinc-400 hover:text-white transition">
                 <LogOut className="w-4 h-4" /> Sign out
@@ -69,19 +71,57 @@ export default function WhyAmplify() {
         </div>
       </nav>
 
-      <main className="max-w-4xl mx-auto px-6 py-20 relative">
-        <div className="text-center mb-16">
-          <div className="inline-flex items-center gap-2 bg-emerald-600/10 text-emerald-400 px-6 py-2 rounded-3xl text-sm font-medium mb-6">
-            <Gift className="w-4 h-4" /> First 2 accounts FREE for life
+      <main className="max-w-6xl mx-auto px-6 py-20 relative">
+        {/* NEW HERO SECTION WITH YOUR DEMO VIDEO */}
+        <div className="grid md:grid-cols-2 gap-16 items-center mb-20">
+          <div>
+            <div className="inline-flex items-center gap-2 bg-emerald-600/10 text-emerald-400 px-6 py-2 rounded-3xl text-sm font-medium mb-6">
+              <Gift className="w-4 h-4" /> First 2 social accounts FREE forever
+            </div>
+            <h1 className="text-7xl font-bold tracking-tighter leading-none mb-6">
+              One piece of content.<br />Infinite reach.
+            </h1>
+            <p className="text-2xl text-zinc-300 mb-10 max-w-lg">
+              Turn any text, video, or audio into perfectly formatted posts for every platform — then post with one click through Zernio.
+            </p>
+            <div className="flex flex-wrap gap-4">
+              <Link
+                href="/pricing"
+                className="flex-1 md:flex-none bg-white text-black hover:bg-white/90 transition px-10 py-6 rounded-3xl text-2xl font-semibold flex items-center justify-center gap-3 shadow-2xl shadow-violet-500/30"
+              >
+                Start 14-Day Free Trial
+                <ArrowRight className="w-6 h-6" />
+              </Link>
+              <Link
+                href="/auth/login"
+                className="flex-1 md:flex-none border border-white/30 hover:border-white/60 transition px-10 py-6 rounded-3xl text-2xl font-semibold flex items-center justify-center"
+              >
+                Login
+              </Link>
+            </div>
           </div>
-          <h1 className="text-6xl font-bold tracking-tighter mb-6">Why Amplify with Zernio?</h1>
-          <p className="text-2xl text-zinc-400 max-w-2xl mx-auto">
-            Text • Video • Audio.<br />
-            One-click posting. Platform-formatted assets. Zero extra work.
-          </p>
+
+          {/* Hero Video with fixed overlay position */}
+          <div className="relative rounded-3xl overflow-hidden border border-white/10 shadow-2xl">
+            <video
+              src="/hero-demo.mp4"
+              controls
+              autoPlay
+              muted
+              loop
+              playsInline
+              className="w-full aspect-video object-cover"
+            />
+            {/* FIXED: Moved to top-right so it never covers controls */}
+            <div className="absolute top-6 right-6 bg-black/70 text-white px-5 py-2 rounded-3xl text-sm font-medium flex items-center gap-2 backdrop-blur-md">
+              <Play className="w-4 h-4" />
+              Watch how it works
+            </div>
+          </div>
         </div>
 
-        {/* Mode highlights - UPDATED WITH YOUR EXACT COPY */}
+        {/* ORIGINAL CONTENT STARTS HERE - EVERYTHING YOU HAD IS PRESERVED */}
+        {/* Mode highlights */}
         <div className="grid md:grid-cols-3 gap-6 mb-16">
           <div className="flex items-center gap-4 bg-zinc-900 border border-white/10 rounded-3xl p-6">
             <FileText className="w-10 h-10 text-violet-400" />
@@ -112,7 +152,7 @@ export default function WhyAmplify() {
           </div>
         </div>
 
-        {/* NEW POWERFUL SECTION - One-Click Posting & Smart Scheduling */}
+        {/* One-Click Posting & Smart Scheduling */}
         <div className="bg-gradient-to-br from-violet-900/20 to-transparent border border-violet-400/20 rounded-3xl p-10 mb-16 text-center">
           <div className="flex justify-center mb-6">
             <div className="inline-flex items-center gap-3 bg-violet-600/10 text-violet-400 px-6 py-3 rounded-3xl">
@@ -147,7 +187,7 @@ export default function WhyAmplify() {
           </div>
         </div>
 
-        {/* 3 Big Feature Cards (unchanged) */}
+        {/* 3 Big Feature Cards */}
         <div className="grid md:grid-cols-3 gap-8 mb-20">
           <div className="bg-zinc-900 border border-white/10 rounded-3xl p-8 text-center">
             <Zap className="w-12 h-12 mx-auto mb-6 text-violet-400" />
@@ -174,7 +214,7 @@ export default function WhyAmplify() {
           </div>
         </div>
 
-        {/* SUPPORTED FILE TYPES - NOW MONA LISA BEAUTIFUL */}
+        {/* Supported File Types */}
         <div className="bg-zinc-900 border border-white/10 rounded-3xl p-10 mb-20">
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center gap-3">
@@ -219,7 +259,7 @@ export default function WhyAmplify() {
           </div>
         </div>
 
-        {/* CTA Box */}
+        {/* Final CTA Box */}
         <div className="bg-gradient-to-br from-zinc-900 to-black border border-white/10 rounded-3xl p-12 text-center max-w-2xl mx-auto">
           <h2 className="text-4xl font-bold tracking-tighter mb-6">Ready to amplify everything?</h2>
           <p className="text-xl text-zinc-400 mb-10">
