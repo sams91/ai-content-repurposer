@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Sparkles, Clock, LogOut, Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Sparkles, Clock, LogOut, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Play, FileText, Mic } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { getUnifiedHistory, loadScheduledPosts, UnifiedHistoryItem, ZernioAccount, ScheduledPostDB } from '../supabase';
+import { getUnifiedHistory, loadScheduledPosts, saveScheduledPost, UnifiedHistoryItem, ZernioAccount, ScheduledPostDB } from '../supabase';
 import { formatDistanceToNow } from 'date-fns';
 import type { User } from '@supabase/supabase-js';
 
@@ -19,8 +19,10 @@ export default function CalendarPage() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string>('');
+  const [selectedItem, setSelectedItem] = useState<UnifiedHistoryItem | null>(null);
   const [selectedZernioAccount, setSelectedZernioAccount] = useState<string>('');
   const [zernioAccounts, setZernioAccounts] = useState<ZernioAccount[]>([]);
+  const [scheduledDateTime, setScheduledDateTime] = useState<string>('');
 
   // ALL HELPER FUNCTIONS DECLARED FIRST (fixes TDZ)
   const loadHistories = async () => {
@@ -82,6 +84,7 @@ export default function CalendarPage() {
           key={day}
           onClick={() => {
             setSelectedDate(dateStr);
+            setSelectedItem(null);
             setShowAddModal(true);
           }}
           className={`h-24 border border-white/10 p-2 cursor-pointer hover:bg-zinc-800 transition-all flex flex-col ${isToday ? 'bg-violet-500/10 border-violet-400' : ''}`}
@@ -92,12 +95,15 @@ export default function CalendarPage() {
               <span className="bg-emerald-500 text-[10px] px-1.5 rounded-full text-white flex items-center">{dayScheduled.length}</span>
             )}
           </div>
-          <div className="flex-1 text-[10px] overflow-hidden">
-            {dayScheduled.slice(0, 2).map((post, i) => (
-              <div key={i} className="truncate text-emerald-400 text-[10px] mt-1">
-                {post.history_item?.file_name || post.history_item?.original_content?.substring(0, 20) || 'Scheduled'}
-              </div>
-            ))}
+          <div className="flex-1 text-[10px] overflow-hidden space-y-0.5">
+            {dayScheduled.slice(0, 2).map((post, i) => {
+              const time = new Date(post.scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              return (
+                <div key={i} className="truncate text-emerald-400 text-[10px]">
+                  {time} • {post.platform} • {post.history_item?.file_name?.substring(0, 15) || 'Post'}
+                </div>
+              );
+            })}
           </div>
         </div>
       );
@@ -112,6 +118,41 @@ export default function CalendarPage() {
     if (activeHistoryTab === 'all') return matchesSearch;
     return matchesSearch && item.type === activeHistoryTab;
   });
+
+  const openScheduleModal = (item: UnifiedHistoryItem | null) => {
+    setSelectedItem(item);
+    const defaultTime = new Date();
+    defaultTime.setHours(defaultTime.getHours() + 1);
+    const defaultDateTime = defaultTime.toISOString().slice(0, 16);
+    setScheduledDateTime(defaultDateTime);
+    setShowAddModal(true);
+  };
+
+  const handleSchedulePost = async () => {
+    if (!user || !selectedItem || !scheduledDateTime || !selectedZernioAccount) {
+      alert('Please select date/time, content item, and Zernio account');
+      return;
+    }
+    const selectedAcc = zernioAccounts.find(a => a._id === selectedZernioAccount);
+    const platform = selectedAcc ? selectedAcc.platform : 'unknown';
+    try {
+      await saveScheduledPost({
+        user_id: user.id,
+        history_item: selectedItem,
+        scheduled_at: scheduledDateTime,
+        platform,
+      });
+      await loadScheduled();
+      setShowAddModal(false);
+      setSelectedItem(null);
+      setScheduledDateTime('');
+      setSelectedZernioAccount('');
+      alert('✅ Post scheduled successfully!');
+    } catch (e) {
+      console.error(e);
+      alert('Failed to schedule post');
+    }
+  };
 
   // Now the useEffects (safe because helpers are already declared)
   useEffect(() => {
@@ -164,10 +205,6 @@ export default function CalendarPage() {
               <button onClick={() => window.location.href = '/calendar'} className="text-violet-400 font-medium flex items-center gap-1">
                 <Clock className="w-4 h-4" /> Calendar
               </button>
-              <button onClick={() => window.location.href = '/'} className="flex items-center gap-2 hover:text-violet-400 transition">
-                <Clock className="w-4 h-4" /> History
-              </button>
-
               <span className="text-zinc-400">{user.email}</span>
               <button onClick={handleSignOut} className="flex items-center gap-2 text-zinc-400 hover:text-white transition">
                 <LogOut className="w-4 h-4" /> Sign out
@@ -273,7 +310,11 @@ export default function CalendarPage() {
                 <p className="text-zinc-500 py-12 text-center">Your amplified content will appear here</p>
               ) : (
                 filteredHistory.map((item) => (
-                  <div key={item.id} className="bg-zinc-900 border border-white/10 rounded-3xl p-6 flex gap-6">
+                  <div 
+                    key={item.id} 
+                    onClick={() => openScheduleModal(item)}
+                    className="bg-zinc-900 border border-white/10 rounded-3xl p-6 flex gap-6 cursor-pointer hover:border-violet-400 transition-all"
+                  >
                     <div className="flex-1">
                       <p className="font-medium">{item.file_name || item.original_content?.substring(0, 60) || 'Content item'}</p>
                       <p className="text-xs text-zinc-500 mt-1">
@@ -293,15 +334,19 @@ export default function CalendarPage() {
         {/* Scheduled Posts Tab */}
         {activeTab === 'scheduled' && (
           <div className="space-y-6">
-            {scheduledPosts.map((post) => (
-              <div key={post.id} className="bg-zinc-900 border border-white/10 rounded-3xl p-6 flex justify-between items-center">
-                <div>
-                  <p className="font-medium">{post.history_item?.file_name || 'Scheduled content'}</p>
-                  <p className="text-xs text-zinc-500">{new Date(post.scheduled_at).toLocaleString()}</p>
+            {scheduledPosts.length === 0 ? (
+              <p className="text-zinc-500 py-12 text-center">No scheduled posts yet</p>
+            ) : (
+              scheduledPosts.map((post) => (
+                <div key={post.id} className="bg-zinc-900 border border-white/10 rounded-3xl p-6 flex justify-between items-center">
+                  <div>
+                    <p className="font-medium">{post.history_item?.file_name || post.history_item?.original_content?.substring(0, 40) || 'Scheduled content'}</p>
+                    <p className="text-xs text-zinc-500">{new Date(post.scheduled_at).toLocaleString()} • {post.platform}</p>
+                  </div>
+                  <div className="text-emerald-400 text-sm">Pending</div>
                 </div>
-                <div className="text-emerald-400 text-sm">Pending</div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         )}
       </main>
@@ -310,29 +355,61 @@ export default function CalendarPage() {
       {showAddModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
           <div className="bg-zinc-900 rounded-3xl p-8 max-w-md w-full mx-4">
-            <h3 className="text-2xl font-bold mb-6">Add to Calendar</h3>
-            <div className="mb-6">
-              <label className="block text-sm text-zinc-400 mb-2">Date</label>
-              <input type="text" value={selectedDate} readOnly className="w-full bg-zinc-950 border border-white/10 rounded-2xl px-4 py-3" />
-            </div>
-            <div>
-              <label className="block text-sm text-zinc-400 mb-2">Zernio Account</label>
-              <select
-                value={selectedZernioAccount}
-                onChange={(e) => setSelectedZernioAccount(e.target.value)}
-                className="w-full bg-zinc-950 border border-white/10 rounded-2xl px-4 py-3"
-              >
-                <option value="">Select account...</option>
-                {zernioAccounts.map(acc => (
-                  <option key={acc._id} value={acc._id}>
-                    {acc.platform} — {acc.name || acc.username}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex gap-3 mt-8">
-              <button onClick={() => setShowAddModal(false)} className="flex-1 py-4 border border-white/20 rounded-2xl">Cancel</button>
-              <button onClick={() => { /* schedule logic */ setShowAddModal(false); }} className="flex-1 py-4 bg-violet-600 rounded-2xl font-semibold">Schedule Post</button>
+            <h3 className="text-2xl font-bold mb-6">Schedule Post</h3>
+            
+            {selectedItem && (
+              <div className="mb-6 p-4 bg-black/30 rounded-2xl">
+                <p className="text-sm text-zinc-400 mb-1">Selected content:</p>
+                <p className="line-clamp-3 text-sm">
+                  {selectedItem.file_name || selectedItem.original_content?.substring(0, 100) || 'Content item'}
+                </p>
+              </div>
+            )}
+
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm text-zinc-400 mb-2">Schedule Date &amp; Time</label>
+                <input
+                  type="datetime-local"
+                  value={scheduledDateTime}
+                  onChange={(e) => setScheduledDateTime(e.target.value)}
+                  className="w-full bg-zinc-950 border border-white/10 rounded-2xl px-4 py-3 focus:outline-none focus:border-violet-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-zinc-400 mb-2">Zernio Account</label>
+                <select
+                  value={selectedZernioAccount}
+                  onChange={(e) => setSelectedZernioAccount(e.target.value)}
+                  className="w-full bg-zinc-950 border border-white/10 rounded-2xl px-4 py-3 focus:outline-none focus:border-violet-400"
+                >
+                  <option value="">Select account...</option>
+                  {zernioAccounts.map(acc => (
+                    <option key={acc._id} value={acc._id}>
+                      {acc.platform} — {acc.name || acc.username}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex gap-3 mt-8">
+                <button 
+                  onClick={() => { 
+                    setShowAddModal(false); 
+                    setSelectedItem(null); 
+                  }} 
+                  className="flex-1 py-4 border border-white/20 rounded-2xl"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleSchedulePost} 
+                  className="flex-1 py-4 bg-violet-600 rounded-2xl font-semibold"
+                >
+                  Schedule Post
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -1,9 +1,14 @@
 'use client';
 
-import { useState } from 'react';
-import { Sparkles, Check, ArrowRight, Clock } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Sparkles, Check, ArrowRight, Clock, LogIn } from 'lucide-react';
 import Link from 'next/link';
 import { Suspense } from 'react';
+import { createClient } from '@/lib/supabase/client';
+import { grantTrialAccess } from '../supabase';
+import type { User } from '@supabase/supabase-js';
+
+const supabase = createClient();
 
 export default function Pricing() {
   return (
@@ -14,10 +19,38 @@ export default function Pricing() {
 }
 
 function PricingContent() {
+  const [user, setUser] = useState<User | null>(null);
+  const [showLoginModal, setShowLoginModal] = useState(false);
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
 
   // Shared Lemon Squeezy checkout URL (both monthly + annual options appear on Lemon's page)
   const CHECKOUT_URL = 'https://contentamplifier.lemonsqueezy.com/checkout/buy/5155307f-61ba-440e-b0cd-80ef5c6bcc33';
+
+  useEffect(() => {
+    const initializeAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setUser(session?.user ?? null);
+    };
+
+    initializeAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleCheckout = async () => {
+    if (!user) {
+      setShowLoginModal(true);
+      return;
+    }
+    // Open Lemon checkout
+    window.open(CHECKOUT_URL, '_blank');
+    // Grant trial access (Lemon will also fire webhook later, but we give immediate access)
+    await grantTrialAccess(user.id);
+  };
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white">
@@ -92,7 +125,7 @@ function PricingContent() {
             </div>
             
             <button
-              onClick={() => window.open(CHECKOUT_URL, '_blank')}
+              onClick={handleCheckout}
               className="w-full py-4 bg-white text-black rounded-3xl font-semibold text-lg flex items-center justify-center gap-2 hover:bg-zinc-100 transition"
             >
               Start 14-Day Free Trial →
@@ -126,7 +159,7 @@ function PricingContent() {
             </div>
 
             <button
-              onClick={() => window.open(CHECKOUT_URL, '_blank')}
+              onClick={handleCheckout}
               className="w-full py-4 bg-white text-black rounded-3xl font-semibold text-lg flex items-center justify-center gap-2 hover:bg-zinc-100 transition"
             >
               Subscribe {billingCycle === 'monthly' ? 'Monthly' : 'Annually'} — ${billingCycle === 'monthly' ? '15' : '153'} →
@@ -138,6 +171,31 @@ function PricingContent() {
           Secure checkout powered by Lemon Squeezy • Test mode is on • Cancel or pause anytime
         </p>
       </div>
+
+      {/* Login Required Modal */}
+      {showLoginModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+          <div className="bg-zinc-900 rounded-3xl max-w-md w-full mx-4 p-8 text-center">
+            <LogIn className="w-12 h-12 mx-auto text-violet-400 mb-4" />
+            <h3 className="text-2xl font-semibold mb-2">Sign in to continue</h3>
+            <p className="text-zinc-400 mb-8">You need to be logged in to start your free trial or subscribe.</p>
+            <div className="flex gap-4">
+              <button 
+                onClick={() => setShowLoginModal(false)}
+                className="flex-1 py-4 border border-white/20 rounded-3xl"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={() => { window.location.href = '/'; setShowLoginModal(false); }}
+                className="flex-1 py-4 bg-white text-black rounded-3xl font-semibold"
+              >
+                Go to Login
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
