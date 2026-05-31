@@ -3,15 +3,18 @@
 import { useState, useEffect } from 'react';
 import { Sparkles, ArrowRight, CheckCircle, RefreshCw, LogOut, Clock, Upload, Copy, RotateCw, Share2, Video, Play, Zap, Send, HelpCircle, Trash2, Search, Download, Mic } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { getUnifiedHistory, UnifiedHistoryItem, ZernioAccount, PlatformOutputs, SmartClip } from './supabase';
+import { getUnifiedHistory, UnifiedHistoryItem, ZernioAccount, PlatformOutputs, SmartClip, needsToSubscribe } from './supabase';
 import VideoRecorder from '@/components/VideoRecorder';
 import AudioProcessor from '@/components/AudioProcessor';
 import { formatDistanceToNow } from 'date-fns';
 import type { User } from '@supabase/supabase-js';
+import { useRouter } from 'next/navigation';
 
 const supabase = createClient();
 
 export default function Home() {
+  const router = useRouter();
+
   // Full platform list for dropdown
   const platforms = [
     { value: 'TikTok', label: 'TikTok / Reels (9:16)' },
@@ -85,17 +88,33 @@ export default function Home() {
       const { data: { session } } = await supabase.auth.getSession();
       setUser(session?.user ?? null);
       setIsAuthLoading(false);
+
+      // Subscription gating - redirect to pricing if no active access
+      if (session?.user) {
+        const needsSubscribe = await needsToSubscribe(session.user.id);
+        if (needsSubscribe) {
+          router.push('/pricing');
+        }
+      }
     };
 
     initializeAuth();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setUser(session?.user ?? null);
       setIsAuthLoading(false);
+
+      // Subscription gating on every auth change
+      if (session?.user) {
+        const needsSubscribe = await needsToSubscribe(session.user.id);
+        if (needsSubscribe) {
+          router.push('/pricing');
+        }
+      }
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     if (user) loadHistories();
@@ -631,14 +650,12 @@ export default function Home() {
               {/* TEXT MODE */}
               {activeMode === 'text' && (
                 <div className="max-w-3xl mx-auto">
-                  {/* ... your full Text Mode UI exactly as before ... */}
                   <div 
                     className={`border-2 border-dashed transition-all rounded-3xl p-8 bg-zinc-900/90 border-white/10 ${isDragging ? 'border-violet-500 bg-violet-500/10' : ''}`}
                     onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                     onDragLeave={() => setIsDragging(false)}
                     onDrop={handleDrop}
                   >
-                    {/* ... full textarea + upload + button ... */}
                     <div className="text-center mb-6">
                       <Upload className="w-10 h-10 mx-auto mb-3 text-violet-400" />
                       <p className="text-lg font-medium">Drop DOCX or TXT here</p>
@@ -686,7 +703,6 @@ export default function Home() {
 
                   {result && (
                     <div className="mt-12">
-                      {/* ... full result UI with Zernio modal etc. ... */}
                       <div className="flex justify-between items-center mb-8">
                         <h3 className="text-2xl font-semibold flex items-center gap-3">
                           <CheckCircle className="text-emerald-500" /> Amplified Content
@@ -715,7 +731,7 @@ export default function Home() {
                           </button>
                         </div>
                       </div>
-                      {/* ... rest of the result grid and modals exactly as in your original ... */}
+
                       {shareLink && (
                         <div className="mb-8 p-4 bg-zinc-900 border border-violet-500/30 rounded-2xl text-sm">
                           Share Link: <span className="text-violet-400 font-mono break-all">{shareLink}</span>
@@ -813,10 +829,9 @@ export default function Home() {
               )}
             </div>
 
-            {/* History sidebar - full original code exactly as before */}
+            {/* History sidebar */}
             {showHistory && (
               <div className="w-96 bg-zinc-950 border-l border-white/10 p-6 overflow-auto h-screen sticky top-0">
-                {/* ... full history sidebar code exactly as in your original paste ... */}
                 <div className="flex justify-between items-center mb-6">
                   <h3 className="text-2xl font-bold flex items-center gap-2">
                     <Clock className="w-5 h-5" /> History
@@ -849,7 +864,6 @@ export default function Home() {
                   ))}
                 </div>
 
-                {/* VIDEOS SECTION - full original */}
                 {(activeHistoryTab === 'all' || activeHistoryTab === 'video') && (
                   <div className="mb-10">
                     <h4 className="uppercase text-xs tracking-widest text-zinc-500 mb-4 flex items-center gap-2">
@@ -933,7 +947,6 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* AUDIO SECTION - full original */}
                 {(activeHistoryTab === 'all' || activeHistoryTab === 'audio') && (
                   <div className="mb-10">
                     <h4 className="uppercase text-xs tracking-widest text-zinc-500 mb-4 flex items-center gap-2">
@@ -1031,7 +1044,6 @@ export default function Home() {
         )}
       </main>
 
-      {/* Zernio API Key Modal - full original */}
       {showZernioKeyModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
           <div className="bg-zinc-900 rounded-3xl p-8 max-w-md w-full mx-4">
@@ -1073,7 +1085,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* Zernio Instructions Modal - full original */}
       {showZernioHelpModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
           <div className="bg-zinc-900 rounded-3xl p-8 max-w-2xl w-full mx-4 max-h-[90vh] overflow-auto">
@@ -1141,7 +1152,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* Video/Audio preview modal - full original */}
       {previewVideo && (
         <div 
           className="fixed inset-0 bg-black/90 flex items-center justify-center z-[9999] p-4"
@@ -1174,7 +1184,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* Smart Clips Modal - full original */}
       {clipModal && (
         <div 
           className="fixed inset-0 bg-black/90 flex items-center justify-center z-[10000] p-4"

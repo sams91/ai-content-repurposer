@@ -5,7 +5,7 @@ import { Sparkles, Check, ArrowRight, Clock, LogIn } from 'lucide-react';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { grantTrialAccess } from '../supabase';
+import { grantTrialAccess, hasActiveAccess } from '../supabase';
 import type { User } from '@supabase/supabase-js';
 
 const supabase = createClient();
@@ -23,9 +23,6 @@ function PricingContent() {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
 
-  // Shared Lemon Squeezy checkout URL (both monthly + annual options appear on Lemon's page)
-  const CHECKOUT_URL = 'https://contentamplifier.lemonsqueezy.com/checkout/buy/5155307f-61ba-440e-b0cd-80ef5c6bcc33';
-
   useEffect(() => {
     const initializeAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -41,14 +38,28 @@ function PricingContent() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const handleCheckout = async () => {
+  const getCheckoutUrl = (userId: string) => {
+    const base = 'https://contentamplifier.lemonsqueezy.com/checkout/buy/5155307f-61ba-440e-b0cd-80ef5c6bcc33';
+    return `${base}?checkout[metadata][user_id]=${encodeURIComponent(userId)}`;
+  };
+
+  const handleFreeTrial = async () => {
     if (!user) {
       setShowLoginModal(true);
       return;
     }
-    // Open Lemon checkout
-    window.open(CHECKOUT_URL, '_blank');
-    // Grant trial access (Lemon will also fire webhook later, but we give immediate access)
+    await grantTrialAccess(user.id);
+    window.location.href = '/';
+  };
+
+  const handlePaidCheckout = async () => {
+    if (!user) {
+      setShowLoginModal(true);
+      return;
+    }
+    const checkoutUrl = getCheckoutUrl(user.id);
+    window.open(checkoutUrl, '_blank');
+    // Immediate trial until webhook confirms paid status
     await grantTrialAccess(user.id);
   };
 
@@ -125,7 +136,7 @@ function PricingContent() {
             </div>
             
             <button
-              onClick={handleCheckout}
+              onClick={handleFreeTrial}
               className="w-full py-4 bg-white text-black rounded-3xl font-semibold text-lg flex items-center justify-center gap-2 hover:bg-zinc-100 transition"
             >
               Start 14-Day Free Trial →
@@ -157,9 +168,8 @@ function PricingContent() {
                 <li className="flex items-start gap-3"><Check className="w-5 h-5 text-white mt-0.5" /> Early access to new features</li>
               </ul>
             </div>
-
             <button
-              onClick={handleCheckout}
+              onClick={handlePaidCheckout}
               className="w-full py-4 bg-white text-black rounded-3xl font-semibold text-lg flex items-center justify-center gap-2 hover:bg-zinc-100 transition"
             >
               Subscribe {billingCycle === 'monthly' ? 'Monthly' : 'Annually'} — ${billingCycle === 'monthly' ? '15' : '153'} →
@@ -180,13 +190,13 @@ function PricingContent() {
             <h3 className="text-2xl font-semibold mb-2">Sign in to continue</h3>
             <p className="text-zinc-400 mb-8">You need to be logged in to start your free trial or subscribe.</p>
             <div className="flex gap-4">
-              <button 
+              <button
                 onClick={() => setShowLoginModal(false)}
                 className="flex-1 py-4 border border-white/20 rounded-3xl"
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={() => { window.location.href = '/'; setShowLoginModal(false); }}
                 className="flex-1 py-4 bg-white text-black rounded-3xl font-semibold"
               >

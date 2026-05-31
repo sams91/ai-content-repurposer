@@ -268,18 +268,28 @@ export async function hasActiveAccess(user_id: string): Promise<boolean> {
   const trialEnds = sub.trial_ends_at ? new Date(sub.trial_ends_at) : null
   const periodEnds = sub.current_period_ends_at ? new Date(sub.current_period_ends_at) : null
 
-  if (sub.status === 'trialing' && trialEnds && trialEnds > now) return true
   if (sub.status === 'active' && periodEnds && periodEnds > now) return true
+  if (sub.status === 'trialing' && trialEnds && trialEnds > now) return true
 
   return false
 }
 
+export async function needsToSubscribe(user_id: string): Promise<boolean> {
+  return !(await hasActiveAccess(user_id))
+}
+
 export async function upsertSubscription(subscriptionData: any) {
+  // Support both conflict keys for maximum robustness
   const { error } = await supabase
     .from('subscriptions')
-    .upsert(subscriptionData, { onConflict: 'lemon_squeezy_subscription_id' })
+    .upsert(subscriptionData, { 
+      onConflict: subscriptionData.lemon_squeezy_subscription_id 
+        ? 'lemon_squeezy_subscription_id' 
+        : 'user_id' 
+    })
 
   if (error) console.error('Error upserting subscription:', error)
+  else console.log('✅ Subscription upserted successfully')
 }
 
 export async function grantTrialAccess(user_id: string) {
@@ -293,6 +303,7 @@ export async function grantTrialAccess(user_id: string) {
       status: 'trialing',
       trial_ends_at: trialEndsAt.toISOString(),
       current_period_ends_at: trialEndsAt.toISOString(),
+      lemon_squeezy_subscription_id: `trial-${user_id}`,
     }, { onConflict: 'user_id' })
 
   if (error) console.error('Error granting trial access:', error)
