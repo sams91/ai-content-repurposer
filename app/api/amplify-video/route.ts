@@ -86,11 +86,12 @@ export async function POST(request: NextRequest) {
       if (audioPath) await fs.unlink(audioPath).catch(() => {});
     }
 
-    // === STEP 2: Generate platform content + TRUE Smart Clips ===
+    // === STEP 2: Generate platform content + STRONG Smart Clips ===
     const prompt = `You are an expert short-form video strategist.
 Video Transcription:
 ${transcription}
-Create highly engaging, platform-optimized content. Return clean JSON only:
+
+Return ONLY valid JSON with this exact structure:
 {
   "youtube": { "title": "...", "description": "..." },
   "tiktok": { "caption": "...", "hashtags": ["#tag1", "#tag2"] },
@@ -105,11 +106,17 @@ Create highly engaging, platform-optimized content. Return clean JSON only:
     { "duration": "30", "start": 45, "end": 75, "reason": "Best 30-second emotional moment" },
     { "duration": "60", "start": 120, "end": 180, "reason": "Most shareable 60-second story segment" }
   ]
-}`;
+}
+
+Rules:
+- clipIdeas MUST contain exactly three entries: one 15s, one 30s, one 60s.
+- Timestamps must be realistic based on total length.
+- Always return all platforms and clipIdeas.`;
+
     const completion = await client.chat.completions.create({
       model: visionModel,
       messages: [
-        { role: "system", content: "You are a highly skilled social media strategist specializing in cross-platform video content." },
+        { role: "system", content: "You are a highly skilled social media strategist specializing in cross-platform video content. Always return valid JSON with clipIdeas." },
         { role: "user", content: prompt }
       ],
       temperature: 0.7,
@@ -120,7 +127,8 @@ Create highly engaging, platform-optimized content. Return clean JSON only:
     try {
       outputs = JSON.parse(completion.choices[0].message.content || "{}");
     } catch (e) {
-      console.error("Failed to parse AI response as JSON");
+      console.error("Failed to parse AI response as JSON, using fallback");
+      outputs = { clipIdeas: [] };
     }
 
     // === STEP 3: Upload to Supabase Storage with retry ===
@@ -154,7 +162,7 @@ Create highly engaging, platform-optimized content. Return clean JSON only:
         lastError = err;
         console.warn(`Upload attempt ${uploadAttempts} failed:`, err.message);
         if (uploadAttempts < maxAttempts) {
-          await new Promise(r => setTimeout(r, 1500)); // backoff
+          await new Promise(r => setTimeout(r, 1500));
         }
       }
     }
@@ -162,7 +170,7 @@ Create highly engaging, platform-optimized content. Return clean JSON only:
     if (!publicUrl) {
       console.error("Storage upload error after retries:", lastError);
       return NextResponse.json({
-        error: `Storage upload failed after ${maxAttempts} attempts. This is usually a temporary network issue between Vercel and Supabase. Please try again in a few seconds. If it persists, check your Supabase dashboard logs.`,
+        error: `Storage upload failed after ${maxAttempts} attempts. Please try again.`,
       }, { status: 502 });
     }
 

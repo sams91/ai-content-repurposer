@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Sparkles, ArrowRight, CheckCircle, RefreshCw, LogOut, Clock, Upload, Copy, RotateCw, Share2, Video, Play, Zap, Send, HelpCircle, Trash2, Search, Download, Mic } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { getUnifiedHistory, UnifiedHistoryItem, ZernioAccount, PlatformOutputs, SmartClip, needsToSubscribe } from './supabase';
+import { getUnifiedHistory, UnifiedHistoryItem, ZernioAccount, SmartClip, needsToSubscribe } from './supabase';
 import VideoRecorder from '@/components/VideoRecorder';
 import AudioProcessor from '@/components/AudioProcessor';
 import { formatDistanceToNow } from 'date-fns';
@@ -28,7 +28,7 @@ export default function Home() {
 
   const [content, setContent] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [result, setResult] = useState<any>(null); // full response to support clipIdeas
+  const [result, setResult] = useState<any>(null);
   const [user, setUser] = useState<User | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
@@ -359,7 +359,7 @@ export default function Home() {
       });
 
       const data = await response.json();
-      setResult(data); // full response so clipIdeas can be rendered
+      setResult(data);
       setContent(textToUse);
 
       await supabase
@@ -371,7 +371,8 @@ export default function Home() {
         });
 
       loadHistories();
-    } catch {
+    } catch (err: any) {
+      console.error(err);
       showToast("Failed to generate content.", true);
     } finally {
       setIsProcessing(false);
@@ -407,7 +408,8 @@ export default function Home() {
         });
 
       loadHistories();
-    } catch {
+    } catch (err: any) {
+      console.error(err);
       showToast("Failed to process file.", true);
     } finally {
       setIsProcessing(false);
@@ -778,7 +780,7 @@ export default function Home() {
                         })}
                       </div>
 
-                      {/* CLIPIDEAS SECTION - NOW FIXED */}
+                      {/* CLIPIDEAS SECTION */}
                       {(result.clipIdeas || result.outputs?.clipIdeas) && (result.clipIdeas || result.outputs?.clipIdeas).length > 0 && (
                         <div className="mt-12 bg-zinc-900 border border-white/10 rounded-3xl p-6">
                           <div className="flex justify-between items-center mb-4">
@@ -847,7 +849,7 @@ export default function Home() {
               )}
             </div>
 
-            {/* History sidebar remains unchanged from your pasted version */}
+            {/* History sidebar */}
             {showHistory && (
               <div className="w-96 bg-zinc-950 border-l border-white/10 p-6 overflow-auto h-screen sticky top-0">
                 <div className="flex justify-between items-center mb-6">
@@ -1062,7 +1064,7 @@ export default function Home() {
         )}
       </main>
 
-      {/* All modals (Zernio, preview, clips) remain unchanged */}
+      {/* Modals unchanged */}
       {showZernioKeyModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
           <div className="bg-zinc-900 rounded-3xl p-8 max-w-md w-full mx-4">

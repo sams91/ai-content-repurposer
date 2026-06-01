@@ -52,7 +52,12 @@ export async function POST(req: NextRequest) {
 
     if (finalMediaUrls.length > 0) {
       postPayload.media_urls = finalMediaUrls;
-      console.log(`📎 Attaching media to Zernio: ${finalMediaUrls.length} file(s)`);
+      // Also try media array with type for better LinkedIn audio support
+      postPayload.media = finalMediaUrls.map((url: string) => ({
+        url,
+        type: audio_url ? 'audio' : 'video'
+      }));
+      console.log(`📎 Attaching media to Zernio: ${finalMediaUrls.length} file(s) - audio: ${!!audio_url}`);
     }
 
     console.log("📤 Sending to Zernio:", JSON.stringify(postPayload, null, 2));
