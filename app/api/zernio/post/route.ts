@@ -6,9 +6,11 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+const MAX_LINKEDIN_CHARS = 3800;
+
 export async function POST(req: NextRequest) {
   try {
-    const { platform_id, content, title, caption, hashtags, video_url, user_id, platform } = await req.json();
+    const { platform_id, content, title, caption, hashtags, video_url, media_urls: incomingMediaUrls, audio_url, user_id, platform } = await req.json();
 
     if (!user_id || !platform_id || !content) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -24,9 +26,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Zernio API key not found' }, { status: 400 });
     }
 
-    // Correct Zernio payload format
+    let finalContent = caption || content || '';
+    if (finalContent.length > MAX_LINKEDIN_CHARS) {
+      console.warn(`⚠️ Content too long (${finalContent.length} chars). Truncating/summarizing for LinkedIn...`);
+      finalContent = finalContent.substring(0, 2000) + 
+        `\n\n[Full episode continued in the original audio/video. This is a condensed version for LinkedIn.]\n\n🔗 Full version: ${video_url || audio_url || 'ContentAmplifier.app'}`;
+    }
+
+    const finalMediaUrls = incomingMediaUrls || 
+                          (video_url ? [video_url] : []) || 
+                          (audio_url ? [audio_url] : []);
+
     const postPayload: any = {
-      content: caption || content,
+      content: finalContent,
       title: title || undefined,
       hashtags: hashtags || undefined,
       platforms: [
@@ -35,11 +47,12 @@ export async function POST(req: NextRequest) {
           accountId: platform_id,
         }
       ],
-      publishNow: true,   // auto-publish
+      publishNow: true,
     };
 
-    if (video_url) {
-      postPayload.media_urls = [video_url];
+    if (finalMediaUrls.length > 0) {
+      postPayload.media_urls = finalMediaUrls;
+      console.log(`📎 Attaching media to Zernio: ${finalMediaUrls.length} file(s)`);
     }
 
     console.log("📤 Sending to Zernio:", JSON.stringify(postPayload, null, 2));
@@ -54,13 +67,12 @@ export async function POST(req: NextRequest) {
     });
 
     const result = await response.json();
-
     console.log("📥 Zernio raw response:", result);
 
     if (!response.ok) {
-      return NextResponse.json({ 
+      return NextResponse.json({
         error: result.message || result.error || 'Failed to post',
-        details: result 
+        details: result
       }, { status: response.status });
     }
 
@@ -68,6 +80,7 @@ export async function POST(req: NextRequest) {
       success: true,
       message: `✅ Successfully posted to Zernio and published!`,
     });
+
   } catch (err: any) {
     console.error('Zernio post error:', err);
     return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 });

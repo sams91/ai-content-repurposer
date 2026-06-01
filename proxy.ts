@@ -30,12 +30,10 @@ export async function proxy(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname
 
-  // === Existing logic from your proxy.ts ===
   if (pathname.startsWith('/auth/login') && session) {
     return NextResponse.redirect(new URL('/', request.url))
   }
 
-  // Public pages — no login required
   const publicPaths = [
     '/why-amplify',
     '/pricing',
@@ -47,15 +45,12 @@ export async function proxy(request: NextRequest) {
     return supabaseResponse
   }
 
-  // Require login for everything else
   if (!session) {
     const loginUrl = new URL('/auth/login', request.url)
     loginUrl.searchParams.set('redirectTo', pathname)
     return NextResponse.redirect(loginUrl)
   }
 
-  // === NEW: Subscription / Trial check + AUTO-GRANT 14-DAY TRIAL ===
-  // TS null guard satisfied with non-null assertion (session is guaranteed here)
   const { data: subscription } = await supabase
     .from('subscriptions')
     .select('status, trial_ends_at, current_period_ends_at')
@@ -68,7 +63,6 @@ export async function proxy(request: NextRequest) {
     (subscription?.trial_ends_at && new Date(subscription.trial_ends_at) > now) ||
     (subscription?.current_period_ends_at && new Date(subscription.current_period_ends_at) > now)
 
-  // Auto-grant 14-day trial for brand-new users
   if (!subscription || !hasActiveAccess) {
     const trialEndsAt = new Date()
     trialEndsAt.setDate(trialEndsAt.getDate() + 14)

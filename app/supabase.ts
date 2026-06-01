@@ -155,6 +155,8 @@ export async function getUnifiedHistory(user_id: string): Promise<UnifiedHistory
     getVideoHistory(user_id),
   ])
 
+  console.log(`📊 getUnifiedHistory loaded ${textHistory.length} text + ${mediaHistory.length} media items for user ${user_id}`)
+
   const combined: UnifiedHistoryItem[] = [
     ...textHistory.map(item => ({ ...item, type: 'text' as const })),
     ...mediaHistory.map(item => ({ ...item, type: getItemType(item) })),
@@ -279,7 +281,6 @@ export async function needsToSubscribe(user_id: string): Promise<boolean> {
 }
 
 export async function upsertSubscription(subscriptionData: any) {
-  // Support both conflict keys for maximum robustness
   const { error } = await supabase
     .from('subscriptions')
     .upsert(subscriptionData, { 

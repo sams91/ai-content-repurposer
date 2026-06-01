@@ -22,17 +22,26 @@ function PricingContent() {
   const [user, setUser] = useState<User | null>(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
+  const [hasAccess, setHasAccess] = useState(false);
 
   useEffect(() => {
     const initializeAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       setUser(session?.user ?? null);
+      if (session?.user) {
+        const active = await hasActiveAccess(session.user.id);
+        setHasAccess(active);
+      }
     };
 
     initializeAuth();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setUser(session?.user ?? null);
+      if (session?.user) {
+        const active = await hasActiveAccess(session.user.id);
+        setHasAccess(active);
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -48,6 +57,10 @@ function PricingContent() {
       setShowLoginModal(true);
       return;
     }
+    if (hasAccess) {
+      window.location.href = '/';
+      return;
+    }
     await grantTrialAccess(user.id);
     window.location.href = '/';
   };
@@ -59,13 +72,11 @@ function PricingContent() {
     }
     const checkoutUrl = getCheckoutUrl(user.id);
     window.open(checkoutUrl, '_blank');
-    // Immediate trial until webhook confirms paid status
     await grantTrialAccess(user.id);
   };
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white">
-      {/* Top nav - matches your app style */}
       <nav className="border-b border-white/10 bg-zinc-950/90 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -93,7 +104,6 @@ function PricingContent() {
           </p>
         </div>
 
-        {/* Billing toggle */}
         <div className="flex justify-center mb-12">
           <div className="bg-zinc-900 rounded-3xl p-1 flex items-center">
             <button
@@ -119,7 +129,6 @@ function PricingContent() {
         </div>
 
         <div className="grid md:grid-cols-2 gap-8 max-w-3xl mx-auto">
-          {/* Free Trial Card */}
           <div className="bg-zinc-900 border border-white/10 rounded-3xl p-8 flex flex-col">
             <div className="flex-1">
               <h3 className="text-2xl font-semibold mb-2">14-Day Free Trial</h3>
@@ -139,12 +148,11 @@ function PricingContent() {
               onClick={handleFreeTrial}
               className="w-full py-4 bg-white text-black rounded-3xl font-semibold text-lg flex items-center justify-center gap-2 hover:bg-zinc-100 transition"
             >
-              Start 14-Day Free Trial →
+              {hasAccess ? '✅ You already have access — Start now' : 'Start 14-Day Free Trial →'}
             </button>
             <p className="text-center text-xs text-zinc-500 mt-6">No card required • Cancel anytime</p>
           </div>
 
-          {/* Pro Card */}
           <div className="bg-gradient-to-b from-violet-600 to-fuchsia-600 border border-violet-400 rounded-3xl p-8 relative flex flex-col shadow-2xl scale-[1.03]">
             <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-white text-violet-600 text-xs font-bold px-6 py-1 rounded-3xl">
               MOST POPULAR
@@ -182,7 +190,6 @@ function PricingContent() {
         </p>
       </div>
 
-      {/* Login Required Modal */}
       {showLoginModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
           <div className="bg-zinc-900 rounded-3xl max-w-md w-full mx-4 p-8 text-center">

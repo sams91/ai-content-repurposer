@@ -17,14 +17,11 @@ const openai = new OpenAI({
 
 const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
 
-// Convert audio to MP3 for better Whisper results
 async function convertToMp3(inputBuffer: Buffer, originalName: string): Promise<Buffer> {
   const tempDir = os.tmpdir();
   const inputPath = path.join(tempDir, `input-${Date.now()}${path.extname(originalName) || '.webm'}`);
   const outputPath = path.join(tempDir, `output-${Date.now()}.mp3`);
-
   fs.writeFileSync(inputPath, inputBuffer);
-
   return new Promise((resolve, reject) => {
     ffmpeg(inputPath)
       .toFormat('mp3')
@@ -64,14 +61,11 @@ export async function POST(request: NextRequest) {
     let audioBuffer: Buffer = Buffer.from(new Uint8Array(arrayBuffer));
     const originalFileName = audioFile.name || `audio-${Date.now()}.webm`;
 
-    // Convert to MP3 when needed
     let processedBuffer: Buffer = audioBuffer;
     let finalFileName = originalFileName;
-
-    const needsConversion = audioFile.type.includes('webm') || 
-                           audioFile.type.includes('ogg') || 
+    const needsConversion = audioFile.type.includes('webm') ||
+                           audioFile.type.includes('ogg') ||
                            !audioFile.type.includes('mp3');
-
     if (needsConversion) {
       try {
         processedBuffer = await convertToMp3(audioBuffer, originalFileName) as Buffer;
@@ -81,10 +75,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Upload to Supabase Storage
     const storagePath = `audio/${userId}/${Date.now()}-${finalFileName}`;
     let publicUrl: string | null = null;
-
     try {
       const { data: uploadData } = await supabase.storage
         .from('audio-uploads')
@@ -92,7 +84,6 @@ export async function POST(request: NextRequest) {
           contentType: 'audio/mpeg',
           upsert: false,
         });
-
       if (uploadData) {
         publicUrl = supabase.storage.from('audio-uploads').getPublicUrl(storagePath).data.publicUrl;
       }
@@ -100,26 +91,23 @@ export async function POST(request: NextRequest) {
       console.warn('Storage upload failed (continuing anyway):', storageError);
     }
 
-    // === Whisper Transcription ===
     const transcriptionResponse = await openai.audio.transcriptions.create({
       file: new File([new Uint8Array(processedBuffer)], finalFileName, { type: 'audio/mpeg' }),
       model: 'whisper-1',
+      language: 'en',
       response_format: 'verbose_json',
     });
 
     const transcriptionText = transcriptionResponse.text || '';
+    console.log('✅ Whisper transcription complete (English forced):', transcriptionText.substring(0, 200) + '...');
 
     if (!transcriptionText.trim()) {
       return NextResponse.json({ error: 'Could not transcribe audio' }, { status: 422 });
     }
 
-    // === Structured Podcast Generation (All 8 Platforms + TRUE Smart Clips) ===
     const systemPrompt = `You are an expert podcast producer and social media content repurposer.
-
 Given a podcast transcription, create high-quality structured output.
-
 Return ONLY valid JSON with this exact structure:
-
 {
   "showNotes": "Well-written show notes (300-500 words) with key takeaways",
   "chapters": [
@@ -142,7 +130,6 @@ Return ONLY valid JSON with this exact structure:
     "ShortsReels": { "caption": "..." }
   }
 }
-
 Rules:
 - clipIdeas MUST contain exactly three entries: one 15s, one 30s, one 60s — the single BEST moment for each duration.
 - Timestamps must be realistic based on total length.
@@ -172,7 +159,6 @@ Rules:
       };
     }
 
-    // === SAVE TO HISTORY (plural amplified_outputs - matches video route) ===
     try {
       const { error: dbError } = await supabase
         .from('video_history')
@@ -184,7 +170,6 @@ Rules:
           amplified_outputs: structuredOutput,
           duration_seconds: null,
         });
-
       if (dbError) console.error('❌ DB insert error:', dbError);
       else console.log('✅ Audio saved to video_history');
     } catch (dbError) {
@@ -200,6 +185,7 @@ Rules:
       clipIdeas: structuredOutput.clipIdeas || [],
       platforms: structuredOutput.platforms || {},
       audio_url: publicUrl,
+      media_urls: publicUrl ? [publicUrl] : [],
       file_name: finalFileName,
       type: 'audio'
     });

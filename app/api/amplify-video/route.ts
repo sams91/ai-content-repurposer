@@ -31,21 +31,17 @@ export async function POST(request: NextRequest) {
     const client = getAIClient();
     const visionModel = getVisionModel();
 
-    // === STEP 1: Audio extraction + Whisper ===
+    // === STEP 1: Audio extraction + Whisper (forced English) ===
     let transcription = "No speech detected or transcription failed.";
     let inputPath: string | null = null;
     let audioPath: string | null = null;
-
     try {
       const videoBuffer = Buffer.from(await videoFile.arrayBuffer());
       const tempDir = os.tmpdir();
       inputPath = path.join(tempDir, `input-${Date.now()}-${videoFile.name}`);
       audioPath = path.join(tempDir, `audio-${Date.now()}.mp3`);
-
       await fs.writeFile(inputPath, videoBuffer);
-
       console.log(`🎥 Extracting audio from ${(videoFile.size / (1024 * 1024)).toFixed(1)} MB video...`);
-
       await execFilePromise('ffmpeg', [
         '-i', inputPath,
         '-vn',
@@ -56,7 +52,6 @@ export async function POST(request: NextRequest) {
         '-y',
         audioPath
       ]);
-
       const audioBuffer = await fs.readFile(audioPath);
       const audioMB = audioBuffer.length / (1024 * 1024);
       console.log(`✅ Audio extracted: ${audioMB.toFixed(2)} MB`);
@@ -79,11 +74,11 @@ export async function POST(request: NextRequest) {
       const transcriptionResponse = await whisper.audio.transcriptions.create({
         file: new File([await fs.readFile(audioPath)], 'audio.mp3', { type: 'audio/mpeg' }),
         model: "whisper-1",
+        language: 'en',
         response_format: "verbose_json",
       });
-
       transcription = transcriptionResponse.text?.trim() || "No speech detected.";
-      console.log("✅ Whisper transcription successful:", transcription.substring(0, 120) + "...");
+      console.log("✅ Whisper transcription successful (English forced):", transcription.substring(0, 120) + "...");
     } catch (transErr: any) {
       console.error("❌ Whisper / ffmpeg error:", transErr.message);
     } finally {
@@ -93,12 +88,9 @@ export async function POST(request: NextRequest) {
 
     // === STEP 2: Generate platform content + TRUE Smart Clips ===
     const prompt = `You are an expert short-form video strategist.
-
 Video Transcription:
 ${transcription}
-
 Create highly engaging, platform-optimized content. Return clean JSON only:
-
 {
   "youtube": { "title": "...", "description": "..." },
   "tiktok": { "caption": "...", "hashtags": ["#tag1", "#tag2"] },
@@ -114,7 +106,6 @@ Create highly engaging, platform-optimized content. Return clean JSON only:
     { "duration": "60", "start": 120, "end": 180, "reason": "Most shareable 60-second story segment" }
   ]
 }`;
-
     const completion = await client.chat.completions.create({
       model: visionModel,
       messages: [
@@ -132,28 +123,50 @@ Create highly engaging, platform-optimized content. Return clean JSON only:
       console.error("Failed to parse AI response as JSON");
     }
 
-    // === STEP 3: Upload to Supabase Storage + Save to video_history ===
+    // === STEP 3: Upload to Supabase Storage with retry ===
     const fileExt = videoFile.name.split('.').pop() || 'mp4';
     const fileName = `${userId}/video-${Date.now()}.${fileExt}`;
+    console.log(`📤 Uploading ${(videoFile.size / (1024 * 1024)).toFixed(1)} MB video to Supabase Storage...`);
 
-    console.log(`📤 Uploading ${ (videoFile.size / (1024 * 1024)).toFixed(1) } MB video to Supabase Storage...`);
+    let uploadAttempts = 0;
+    const maxAttempts = 3;
+    let publicUrl: string | null = null;
+    let lastError: any = null;
 
-    const { data: uploadData, error: uploadError } = await supabaseServer.storage
-      .from('videos')
-      .upload(fileName, videoFile, {
-        contentType: videoFile.type,
-        upsert: true,
-        cacheControl: '3600',
-      });
-
-    if (uploadError) {
-      console.error("Storage upload error:", uploadError);
-      throw new Error(`Storage upload failed: ${uploadError.message}`);
+    while (uploadAttempts < maxAttempts) {
+      uploadAttempts++;
+      try {
+        const { data: uploadData, error } = await supabaseServer.storage
+          .from('videos')
+          .upload(fileName, videoFile, {
+            contentType: videoFile.type,
+            upsert: true,
+            cacheControl: '3600',
+          });
+        if (error) throw error;
+        if (uploadData) {
+          const { data: urlData } = supabaseServer.storage.from('videos').getPublicUrl(fileName);
+          publicUrl = urlData.publicUrl;
+          console.log(`✅ Video uploaded successfully on attempt ${uploadAttempts}`);
+          break;
+        }
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`Upload attempt ${uploadAttempts} failed:`, err.message);
+        if (uploadAttempts < maxAttempts) {
+          await new Promise(r => setTimeout(r, 1500)); // backoff
+        }
+      }
     }
 
-    const { data: { publicUrl } } = supabaseServer.storage.from('videos').getPublicUrl(fileName);
+    if (!publicUrl) {
+      console.error("Storage upload error after retries:", lastError);
+      return NextResponse.json({
+        error: `Storage upload failed after ${maxAttempts} attempts. This is usually a temporary network issue between Vercel and Supabase. Please try again in a few seconds. If it persists, check your Supabase dashboard logs.`,
+      }, { status: 502 });
+    }
 
-    // Save record
+    // === Save to history ===
     const { data: historyRecord, error: dbError } = await supabaseServer
       .from('video_history')
       .insert({
@@ -166,7 +179,6 @@ Create highly engaging, platform-optimized content. Return clean JSON only:
       })
       .select('id')
       .single();
-
     if (dbError) throw new Error(`Database insert failed: ${dbError.message}`);
 
     console.log(`✅ Video saved to history! ID: ${historyRecord.id}`);

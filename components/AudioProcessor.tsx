@@ -3,52 +3,25 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Mic, Square, Upload, Play, RefreshCw, Copy, Send, Download, Trash2, Clock } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import type { User } from '@supabase/supabase-js';
 
 const supabase = createClient();
 
 const MAX_SIZE_MB = 500;
 
-const platformsList = [
-  { value: 'YouTube', label: 'YouTube' },
-  { value: 'TikTok', label: 'TikTok / Reels' },
-  { value: 'Instagram', label: 'Instagram' },
-  { value: 'LinkedIn', label: 'LinkedIn' },
-  { value: 'X', label: 'X (Twitter)' },
-  { value: 'Rumble', label: 'Rumble' },
-  { value: 'Threads', label: 'Threads' },
-  { value: 'ShortsReels', label: 'Shorts / Reels' },
-];
-
-interface PodcastOutputs {
-  transcription?: string;
-  showNotes?: string;
-  chapters?: Array<{ time: string; title: string; summary?: string }>;
-  keyQuotes?: string[];
-  clipIdeas?: Array<{ start: number; end: number; reason: string }>;
-  platforms?: Record<string, any>;
-}
-
-interface ConnectedAccount {
-  _id: string;
-  platform: string;
-  name?: string;
-  username?: string;
-}
-
-export default function AudioProcessor({ onAmplifySuccess }: { onAmplifySuccess?: () => void }) {
+export default function AudioProcessor({ user, onAmplifySuccess }: { user: User | null; onAmplifySuccess?: () => void }) {
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [podcastOutputs, setPodcastOutputs] = useState<PodcastOutputs | null>(null);
+  const [podcastOutputs, setPodcastOutputs] = useState<any>(null);
   const [transcription, setTranscription] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [currentUser, setCurrentUser] = useState<any>(null);
   const [isDragging, setIsDragging] = useState(false);
 
-  const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
+  const [connectedAccounts, setConnectedAccounts] = useState<any[]>([]);
   const [showZernioModal, setShowZernioModal] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState('');
 
@@ -56,26 +29,14 @@ export default function AudioProcessor({ onAmplifySuccess }: { onAmplifySuccess?
   const [clipModal, setClipModal] = useState<any>(null);
   const [isCopyingAll, setIsCopyingAll] = useState(false);
 
+  const [audioPublicUrl, setAudioPublicUrl] = useState<string | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  useEffect(() => {
-    const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setCurrentUser(user);
-    };
-    getUser();
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_, session) => {
-      setCurrentUser(session?.user || null);
-    });
-    return () => listener.subscription.unsubscribe();
-  }, []);
-
-  // ==================== RECORDING ====================
   const startRecording = async () => {
     setError('');
     setRecordingTime(0);
@@ -118,7 +79,6 @@ export default function AudioProcessor({ onAmplifySuccess }: { onAmplifySuccess?
     setIsRecording(false);
   };
 
-  // ==================== FILE UPLOAD ====================
   const triggerFileUpload = () => fileInputRef.current?.click();
 
   const handleFileSelect = useCallback((file: File) => {
@@ -149,10 +109,9 @@ export default function AudioProcessor({ onAmplifySuccess }: { onAmplifySuccess?
     if (file) handleFileSelect(file);
   };
 
-  // ==================== AMPLIFY ====================
   const amplifyAudio = async () => {
-    if (!audioBlob || !currentUser) {
-      setError(!currentUser ? "Please log in" : "No audio selected");
+    if (!audioBlob || !user) {
+      setError(!user ? "Please log in" : "No audio selected");
       return;
     }
 
@@ -164,7 +123,7 @@ export default function AudioProcessor({ onAmplifySuccess }: { onAmplifySuccess?
       const formData = new FormData();
       const fileName = selectedFile?.name || `recording-${Date.now()}.webm`;
       formData.append('audio', audioBlob, fileName);
-      formData.append('user_id', currentUser.id);
+      formData.append('user_id', user.id);
 
       const response = await fetch('/api/amplify-audio', { method: 'POST', body: formData });
       const data = await response.json();
@@ -180,6 +139,7 @@ export default function AudioProcessor({ onAmplifySuccess }: { onAmplifySuccess?
         clipIdeas: data.clipIdeas,
         platforms: data.platforms,
       });
+      setAudioPublicUrl(data.audio_url || null);
 
       onAmplifySuccess?.();
     } catch (err: any) {
@@ -189,7 +149,6 @@ export default function AudioProcessor({ onAmplifySuccess }: { onAmplifySuccess?
     }
   };
 
-  // ==================== COPY ALL ====================
   const copyAllPlatforms = async () => {
     if (!podcastOutputs?.platforms) return;
     setIsCopyingAll(true);
@@ -220,18 +179,17 @@ export default function AudioProcessor({ onAmplifySuccess }: { onAmplifySuccess?
     setIsCopyingAll(false);
   };
 
-  // ==================== ZERNIO ====================
   const fetchConnectedAccounts = async () => {
-    if (!currentUser) return;
+    if (!user) return;
     try {
-      const res = await fetch(`/api/zernio/accounts?user_id=${currentUser.id}`);
+      const res = await fetch(`/api/zernio/accounts?user_id=${user.id}`);
       const data = await res.json();
       if (data.accounts) setConnectedAccounts(data.accounts);
     } catch (e) {}
   };
 
   const postToZernio = async () => {
-    if (!currentUser || !selectedAccountId || !podcastOutputs) return;
+    if (!user || !selectedAccountId || !podcastOutputs) return;
     const selectedAccount = connectedAccounts.find(a => a._id === selectedAccountId);
     if (!selectedAccount) return;
 
@@ -245,7 +203,9 @@ export default function AudioProcessor({ onAmplifySuccess }: { onAmplifySuccess?
           platform_id: selectedAccount._id,
           platform: selectedAccount.platform,
           content: postContent,
-          user_id: currentUser.id,
+          user_id: user.id,
+          media_urls: audioPublicUrl ? [audioPublicUrl] : [],
+          audio_url: audioPublicUrl
         }),
       });
       const json = await res.json();
@@ -261,7 +221,6 @@ export default function AudioProcessor({ onAmplifySuccess }: { onAmplifySuccess?
     }
   };
 
-  // ==================== SMART CLIPS ====================
   const generateSmartClips = async () => {
     if (!podcastOutputs?.clipIdeas?.length) {
       alert("No clip ideas available yet.");
@@ -275,7 +234,6 @@ export default function AudioProcessor({ onAmplifySuccess }: { onAmplifySuccess?
     setGeneratingClips(false);
   };
 
-  // ==================== UTILS ====================
   const resetAll = () => {
     if (audioUrl) URL.revokeObjectURL(audioUrl);
     if (streamRef.current) streamRef.current.getTracks().forEach(track => track.stop());
@@ -289,6 +247,7 @@ export default function AudioProcessor({ onAmplifySuccess }: { onAmplifySuccess?
     setError('');
     setRecordingTime(0);
     setIsRecording(false);
+    setAudioPublicUrl(null);
   };
 
   const copyToClipboard = async (text: string, label: string) => {
@@ -313,10 +272,9 @@ export default function AudioProcessor({ onAmplifySuccess }: { onAmplifySuccess?
           <Mic className="w-8 h-8 text-violet-400" />
           <h2 className="text-3xl font-bold tracking-tight">Audio Mode</h2>
         </div>
-        <p className="text-zinc-400">Record or upload podcasts &amp; voiceovers. Get show notes, chapters, quotes &amp; clips.</p>
+        <p className="text-zinc-400">Record or upload podcasts & voiceovers. Get show notes, chapters, quotes & clips.</p>
       </div>
 
-      {/* RECORDING + UPLOAD */}
       {!audioUrl && (
         <div className="space-y-6">
           <div className="bg-zinc-900 border border-white/10 rounded-3xl p-8 text-center">
@@ -357,7 +315,6 @@ export default function AudioProcessor({ onAmplifySuccess }: { onAmplifySuccess?
         </div>
       )}
 
-      {/* AUDIO PREVIEW + AMPLIFY */}
       {audioUrl && (
         <div className="bg-zinc-900 border border-white/10 rounded-3xl p-8 mb-8">
           <div className="flex justify-between items-center mb-4">
@@ -383,7 +340,6 @@ export default function AudioProcessor({ onAmplifySuccess }: { onAmplifySuccess?
         </div>
       )}
 
-      {/* RESULTS */}
       {podcastOutputs && (
         <div className="space-y-8 mt-8">
           <div className="flex justify-between items-center">
@@ -401,7 +357,6 @@ export default function AudioProcessor({ onAmplifySuccess }: { onAmplifySuccess?
             </div>
           </div>
 
-          {/* Transcription */}
           {transcription && (
             <div className="bg-zinc-900 border border-white/10 rounded-3xl p-6">
               <div className="flex justify-between mb-3">
@@ -414,7 +369,6 @@ export default function AudioProcessor({ onAmplifySuccess }: { onAmplifySuccess?
             </div>
           )}
 
-          {/* Show Notes */}
           {podcastOutputs.showNotes && (
             <div className="bg-zinc-900 border border-white/10 rounded-3xl p-6">
               <div className="flex justify-between mb-3">
@@ -427,7 +381,6 @@ export default function AudioProcessor({ onAmplifySuccess }: { onAmplifySuccess?
             </div>
           )}
 
-          {/* Key Quotes */}
           {podcastOutputs.keyQuotes && podcastOutputs.keyQuotes.length > 0 && (
             <div className="bg-zinc-900 border border-white/10 rounded-3xl p-6">
               <h4 className="font-semibold mb-4">Key Quotes</h4>
@@ -442,7 +395,6 @@ export default function AudioProcessor({ onAmplifySuccess }: { onAmplifySuccess?
             </div>
           )}
 
-          {/* Chapters */}
           {podcastOutputs.chapters && podcastOutputs.chapters.length > 0 && (
             <div className="bg-zinc-900 border border-white/10 rounded-3xl p-6">
               <h4 className="font-semibold mb-4">Chapters</h4>
@@ -460,7 +412,6 @@ export default function AudioProcessor({ onAmplifySuccess }: { onAmplifySuccess?
             </div>
           )}
 
-          {/* Smart Clips */}
           {podcastOutputs.clipIdeas && podcastOutputs.clipIdeas.length > 0 && (
             <div className="bg-zinc-900 border border-white/10 rounded-3xl p-6">
               <div className="flex justify-between items-center mb-4">
@@ -483,7 +434,6 @@ export default function AudioProcessor({ onAmplifySuccess }: { onAmplifySuccess?
             </div>
           )}
 
-          {/* Platform Optimized Content */}
           {podcastOutputs.platforms && Object.keys(podcastOutputs.platforms).length > 0 && (
             <div>
               <h4 className="font-semibold mb-4">Platform-Optimized Content</h4>
@@ -511,7 +461,6 @@ export default function AudioProcessor({ onAmplifySuccess }: { onAmplifySuccess?
         </div>
       )}
 
-      {/* Zernio Modal */}
       {showZernioModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
           <div className="bg-zinc-900 rounded-3xl p-8 max-w-md w-full mx-4">
@@ -528,7 +477,6 @@ export default function AudioProcessor({ onAmplifySuccess }: { onAmplifySuccess?
         </div>
       )}
 
-      {/* Smart Clips Modal */}
       {clipModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4" onClick={() => setClipModal(null)}>
           <div className="bg-zinc-950 rounded-3xl max-w-2xl w-full p-6" onClick={e => e.stopPropagation()}>

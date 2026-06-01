@@ -4,13 +4,13 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { RotateCcw, Copy, Square, Send, Download } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import type { User } from '@supabase/supabase-js';
-import { ZernioAccount, PlatformResult } from '@/app/supabase';   // fixed import path
+import { ZernioAccount, PlatformResult } from '@/app/supabase';
 
 const supabase = createClient();
 
 const MAX_SIZE_MB = 2048;
 
-export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?: () => void }) {
+export default function VideoRecorder({ user, onAmplifySuccess }: { user: User | null; onAmplifySuccess?: () => void }) {
   const [videoBlob, setVideoBlob] = useState<Blob | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [videoPublicUrl, setVideoPublicUrl] = useState<string | null>(null);
@@ -21,7 +21,6 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
   const [transcription, setTranscription] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   const [connectedAccounts, setConnectedAccounts] = useState<ZernioAccount[]>([]);
   const [showZernioModal, setShowZernioModal] = useState(false);
@@ -36,20 +35,6 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const liveVideoRef = useRef<HTMLVideoElement>(null);
-
-  useEffect(() => {
-    const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setCurrentUser(user);
-    };
-    getUser();
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_, session) => {
-      setCurrentUser(session?.user || null);
-    });
-
-    return () => listener.subscription.unsubscribe();
-  }, []);
 
   const startRecording = async () => {
     console.log("🎥 startRecording called");
@@ -121,8 +106,8 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
   }, []);
 
   const amplifyVideo = async () => {
-    if (!videoBlob || !currentUser) {
-      setError(!currentUser ? "Please log in to amplify videos" : "No video selected");
+    if (!videoBlob || !user) {
+      setError(!user ? "Please log in to amplify videos" : "No video selected");
       return;
     }
 
@@ -136,7 +121,7 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
       const formData = new FormData();
       const fileName = selectedFile?.name || `recording-${Date.now()}.webm`;
       formData.append('video', videoBlob, fileName);
-      formData.append('user_id', currentUser.id);
+      formData.append('user_id', user.id);
 
       const response = await fetch('/api/amplify-video', { method: 'POST', body: formData });
       const data = await response.json();
@@ -157,9 +142,9 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
   };
 
   const fetchConnectedAccounts = async () => {
-    if (!currentUser) return;
+    if (!user) return;
     try {
-      const res = await fetch(`/api/zernio/accounts?user_id=${currentUser.id}`);
+      const res = await fetch(`/api/zernio/accounts?user_id=${user.id}`);
       const data = await res.json();
       if (data.accounts) setConnectedAccounts(data.accounts);
     } catch (e) {
@@ -168,7 +153,7 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
   };
 
   const postToZernio = async () => {
-    if (!currentUser || !selectedAccountId) {
+    if (!user || !selectedAccountId) {
       alert('Please select an account');
       return;
     }
@@ -191,7 +176,7 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
           caption: firstResult?.caption,
           hashtags: firstResult?.hashtags,
           video_url: videoPublicUrl,
-          user_id: currentUser.id,
+          user_id: user.id,
         }),
       });
 
@@ -219,7 +204,7 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
         body: JSON.stringify({
           video_url: videoPublicUrl,
           platform: platform.toLowerCase(),
-          user_id: currentUser!.id,
+          user_id: user!.id,
         }),
       });
 
@@ -304,7 +289,6 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
       </div>
 
       <div className="border border-white/10 bg-zinc-950 rounded-3xl p-8">
-        {/* LIVE PREVIEW */}
         <div className={`relative aspect-video bg-black rounded-2xl overflow-hidden mb-6 ${isRecording ? 'block' : 'hidden'}`}>
           <video
             ref={liveVideoRef}
@@ -328,7 +312,6 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
           )}
         </div>
 
-        {/* RECORDED / UPLOADED VIDEO */}
         {videoUrl && !isRecording && (
           <div className="relative aspect-video bg-black rounded-2xl overflow-hidden mb-6">
             <video
@@ -339,7 +322,6 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
           </div>
         )}
 
-        {/* Initial controls */}
         {!videoUrl && !isRecording && (
           <div className="flex flex-col items-center gap-4 py-12">
             <button
@@ -366,7 +348,6 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
           onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
         />
 
-        {/* Amplify & Reset */}
         {videoUrl && !isRecording && (
           <div className="space-y-6">
             <button
@@ -388,7 +369,6 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
 
       {error && <div className="bg-red-950 border border-red-500/50 p-6 rounded-3xl text-red-300">{error}</div>}
 
-      {/* Results */}
       {results && results.length > 0 && (
         <div className="space-y-8">
           <div className="flex justify-between items-center">
@@ -398,7 +378,6 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
                 <Copy size={18} /> Copy All Results
               </button>
 
-              {/* Download dropdown */}
               <div className="relative">
                 <button
                   onClick={() => setShowDownloadDropdown(!showDownloadDropdown)}
@@ -482,7 +461,6 @@ export default function VideoRecorder({ onAmplifySuccess }: { onAmplifySuccess?:
             ))}
           </div>
 
-          {/* Zernio modal */}
           {showZernioModal && (
             <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
               <div className="bg-zinc-900 rounded-3xl p-8 max-w-md w-full mx-4">

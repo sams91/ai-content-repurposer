@@ -15,7 +15,6 @@ const supabase = createClient();
 export default function Home() {
   const router = useRouter();
 
-  // Full platform list for dropdown
   const platforms = [
     { value: 'TikTok', label: 'TikTok / Reels (9:16)' },
     { value: 'YouTube', label: 'YouTube / Shorts (16:9)' },
@@ -29,7 +28,7 @@ export default function Home() {
 
   const [content, setContent] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [result, setResult] = useState<PlatformOutputs | null>(null);
+  const [result, setResult] = useState<any>(null); // full response to support clipIdeas
   const [user, setUser] = useState<User | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
@@ -44,28 +43,22 @@ export default function Home() {
   const [shareLink, setShareLink] = useState<string | null>(null);
   const [activeMode, setActiveMode] = useState<'text' | 'video' | 'audio'>('video');
 
-  // Zernio key modal
   const [showZernioKeyModal, setShowZernioKeyModal] = useState(false);
   const [zernioApiKeyInput, setZernioApiKeyInput] = useState('');
 
-  // Zernio instructions/help modal
   const [showZernioHelpModal, setShowZernioHelpModal] = useState(false);
 
-  // Text Mode Zernio auto-fetch
   const [textConnectedAccounts, setTextConnectedAccounts] = useState<ZernioAccount[]>([]);
   const [showTextZernioModal, setShowTextZernioModal] = useState(false);
   const [selectedTextAccountId, setSelectedTextAccountId] = useState('');
 
-  // History polish states
   const [historySearch, setHistorySearch] = useState<string>('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [previewVideo, setPreviewVideo] = useState<{ url: string; name: string; isAudio?: boolean } | null>(null);
 
-  // Smart Clipping states
   const [generatingClipsFor, setGeneratingClipsFor] = useState<string | null>(null);
   const [clipModal, setClipModal] = useState<{ id: string; clips: SmartClip[]; type: 'video' | 'audio' } | null>(null);
 
-  // Burn-in Captions + Thumbnail states
   const [burningCaptionsFor, setBurningCaptionsFor] = useState<string | null>(null);
   const [generatingThumbnailFor, setGeneratingThumbnailFor] = useState<string | null>(null);
 
@@ -89,7 +82,6 @@ export default function Home() {
       setUser(session?.user ?? null);
       setIsAuthLoading(false);
 
-      // Subscription gating - redirect to pricing if no active access
       if (session?.user) {
         const needsSubscribe = await needsToSubscribe(session.user.id);
         if (needsSubscribe) {
@@ -104,7 +96,6 @@ export default function Home() {
       setUser(session?.user ?? null);
       setIsAuthLoading(false);
 
-      // Subscription gating on every auth change
       if (session?.user) {
         const needsSubscribe = await needsToSubscribe(session.user.id);
         if (needsSubscribe) {
@@ -117,7 +108,9 @@ export default function Home() {
   }, [router]);
 
   useEffect(() => {
-    if (user) loadHistories();
+    if (user) {
+      loadHistories();
+    }
   }, [user]);
 
   const deleteHistoryItem = async (id: string, type: 'text' | 'video' | 'audio') => {
@@ -284,8 +277,8 @@ export default function Home() {
     const selectedAccount = textConnectedAccounts.find(a => a._id === selectedTextAccountId);
     if (!selectedAccount) return;
 
-    const firstPlatformKey = Object.keys(result)[0];
-    const postContent = result[firstPlatformKey];
+    const firstPlatformKey = Object.keys(result.outputs || result)[0];
+    const postContent = (result.outputs || result)[firstPlatformKey];
 
     try {
       const res = await fetch('/api/zernio/post', {
@@ -366,7 +359,7 @@ export default function Home() {
       });
 
       const data = await response.json();
-      setResult(data.outputs);
+      setResult(data); // full response so clipIdeas can be rendered
       setContent(textToUse);
 
       await supabase
@@ -402,7 +395,7 @@ export default function Home() {
       });
 
       const data = await response.json();
-      setResult(data.outputs);
+      setResult(data);
       setContent(data.originalContent);
 
       await supabase
@@ -428,7 +421,7 @@ export default function Home() {
     if (file) handleFileUpload(file);
   };
 
-  const copyToClipboard = async (text: string | PlatformOutputs[keyof PlatformOutputs], label: string) => {
+  const copyToClipboard = async (text: string | any, label: string) => {
     const safeText = typeof text === 'string' ? text : JSON.stringify(text, null, 2);
     try {
       await navigator.clipboard.writeText(safeText.trim());
@@ -444,7 +437,8 @@ export default function Home() {
     setIsCopyingAll(true);
     let allText = '';
 
-    Object.entries(result).forEach(([platform, text]) => {
+    const platformsData = result.outputs || result;
+    Object.entries(platformsData).forEach(([platform, text]) => {
       const displayName = platform === 'twitter' ? 'X' : platform.charAt(0).toUpperCase() + platform.slice(1);
       const safeText = typeof text === 'string' ? text : JSON.stringify(text, null, 2);
       allText += `${displayName.toUpperCase()}:\n${safeText}\n\n`;
@@ -468,7 +462,7 @@ export default function Home() {
         .from('shared_content')
         .insert({
           user_id: user.id,
-          outputs: result,
+          outputs: result.outputs || result,
           original_content: content
         })
         .select('id')
@@ -510,7 +504,10 @@ export default function Home() {
       
       setResult(prev => ({
         ...prev,
-        [platform]: data.outputs[platform]
+        outputs: {
+          ...(prev.outputs || prev),
+          [platform]: data.outputs[platform]
+        }
       }));
 
     } catch {
@@ -738,8 +735,9 @@ export default function Home() {
                         </div>
                       )}
 
+                      {/* Platforms */}
                       <div className="grid md:grid-cols-2 gap-6">
-                        {Object.entries(result).map(([platform, text]) => {
+                        {Object.entries(result.outputs || result).map(([platform, text]) => {
                           const isX = platform === 'twitter';
                           const displayName = platform === 'twitter' ? 'X' : platform.charAt(0).toUpperCase() + platform.slice(1);
                           const safeText = typeof text === 'string' ? text : JSON.stringify(text, null, 2);
@@ -780,6 +778,26 @@ export default function Home() {
                         })}
                       </div>
 
+                      {/* CLIPIDEAS SECTION - NOW FIXED */}
+                      {(result.clipIdeas || result.outputs?.clipIdeas) && (result.clipIdeas || result.outputs?.clipIdeas).length > 0 && (
+                        <div className="mt-12 bg-zinc-900 border border-white/10 rounded-3xl p-6">
+                          <div className="flex justify-between items-center mb-4">
+                            <h4 className="font-semibold">Smart Clip Ideas</h4>
+                          </div>
+                          <div className="space-y-2 text-sm">
+                            {(result.clipIdeas || result.outputs?.clipIdeas).map((clip: any, i: number) => (
+                              <div key={i} className="bg-zinc-950 p-3 rounded-2xl flex justify-between items-center">
+                                <div>
+                                  <span className="font-mono text-emerald-400">{clip.start || clip.duration}s</span>
+                                  <span className="ml-3 text-zinc-300">{clip.reason}</span>
+                                </div>
+                                <button onClick={() => copyToClipboard(`${clip.start || clip.duration}s: ${clip.reason}`, 'Clip Idea')} className="text-xs px-3 py-1 bg-zinc-800 rounded-full">Copy</button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       {showTextZernioModal && (
                         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
                           <div className="bg-zinc-900 rounded-3xl p-8 max-w-md w-full mx-4">
@@ -817,19 +835,19 @@ export default function Home() {
               {/* VIDEO MODE */}
               {activeMode === 'video' && (
                 <div className="max-w-4xl mx-auto">
-                  <VideoRecorder onAmplifySuccess={handleAmplifySuccess} />
+                  <VideoRecorder user={user} onAmplifySuccess={handleAmplifySuccess} />
                 </div>
               )}
 
               {/* AUDIO MODE */}
               {activeMode === 'audio' && (
                 <div className="max-w-4xl mx-auto">
-                  <AudioProcessor onAmplifySuccess={handleAmplifySuccess} />
+                  <AudioProcessor user={user} onAmplifySuccess={handleAmplifySuccess} />
                 </div>
               )}
             </div>
 
-            {/* History sidebar */}
+            {/* History sidebar remains unchanged from your pasted version */}
             {showHistory && (
               <div className="w-96 bg-zinc-950 border-l border-white/10 p-6 overflow-auto h-screen sticky top-0">
                 <div className="flex justify-between items-center mb-6">
@@ -1044,6 +1062,7 @@ export default function Home() {
         )}
       </main>
 
+      {/* All modals (Zernio, preview, clips) remain unchanged */}
       {showZernioKeyModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
           <div className="bg-zinc-900 rounded-3xl p-8 max-w-md w-full mx-4">
