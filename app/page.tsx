@@ -329,9 +329,7 @@ export default function Home() {
 
   const showToast = (message: string, isError = false) => {
     const toast = document.createElement('div');
-    toast.className = `fixed bottom-6 right-6 px-6 py-3 rounded-2xl text-sm font-medium transition-all duration-300 z-50 ${
-      isError ? 'bg-red-500/90' : 'bg-emerald-500/90'
-    } text-white shadow-2xl border border-white/10`;
+    toast.className = `fixed bottom-6 right-6 px-6 py-3 rounded-2xl text-sm font-medium transition-all duration-300 z-50 ${isError ? 'bg-red-500/90' : 'bg-emerald-500/90'} text-white shadow-2xl border border-white/10`;
     toast.textContent = message;
     document.body.appendChild(toast);
     
@@ -504,7 +502,7 @@ export default function Home() {
 
       const data = await response.json();
       
-      setResult(prev => ({
+      setResult((prev: any) => ({
         ...prev,
         outputs: {
           ...(prev.outputs || prev),
@@ -875,9 +873,7 @@ export default function Home() {
                     <button
                       key={tab}
                       onClick={() => setActiveHistoryTab(tab)}
-                      className={`flex-1 py-3 rounded-3xl text-sm font-medium transition-all ${
-                        activeHistoryTab === tab ? 'bg-violet-600 text-white' : 'hover:bg-white/5'
-                      }`}
+                      className={`flex-1 py-3 rounded-3xl text-sm font-medium transition-all ${activeHistoryTab === tab ? 'bg-violet-600 text-white' : 'hover:bg-white/5'}`}
                     >
                       {tab === 'all' ? 'All' : tab === 'text' ? 'Text' : tab === 'video' ? 'Videos' : 'Audio'}
                     </button>
@@ -1064,7 +1060,7 @@ export default function Home() {
         )}
       </main>
 
-      {/* Modals unchanged */}
+      {/* Modals */}
       {showZernioKeyModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
           <div className="bg-zinc-900 rounded-3xl p-8 max-w-md w-full mx-4">
