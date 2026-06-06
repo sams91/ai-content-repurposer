@@ -20,15 +20,12 @@ export default function AudioProcessor({ user, onAmplifySuccess }: { user: User 
   const [error, setError] = useState<string>('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-
   const [connectedAccounts, setConnectedAccounts] = useState<any[]>([]);
   const [showZernioModal, setShowZernioModal] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState('');
-
   const [generatingClips, setGeneratingClips] = useState(false);
   const [clipModal, setClipModal] = useState<any>(null);
   const [isCopyingAll, setIsCopyingAll] = useState(false);
-
   const [audioPublicUrl, setAudioPublicUrl] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -172,7 +169,7 @@ export default function AudioProcessor({ user, onAmplifySuccess }: { user: User 
 
     try {
       await navigator.clipboard.writeText(allText.trim());
-      alert('✅ Copied all platform content!');
+      alert('Copied all platform content!');
     } catch {
       alert('Failed to copy');
     }
@@ -238,7 +235,6 @@ export default function AudioProcessor({ user, onAmplifySuccess }: { user: User 
     if (audioUrl) URL.revokeObjectURL(audioUrl);
     if (streamRef.current) streamRef.current.getTracks().forEach(track => track.stop());
     if (timerRef.current) clearInterval(timerRef.current);
-
     setAudioBlob(null);
     setAudioUrl(null);
     setSelectedFile(null);
@@ -326,9 +322,7 @@ export default function AudioProcessor({ user, onAmplifySuccess }: { user: User 
               <Trash2 className="w-4 h-4" /> Start Over
             </button>
           </div>
-
           <audio controls src={audioUrl} className="w-full mb-6 rounded-xl" />
-
           <button
             onClick={amplifyAudio}
             disabled={isProcessing}
@@ -385,7 +379,7 @@ export default function AudioProcessor({ user, onAmplifySuccess }: { user: User 
             <div className="bg-zinc-900 border border-white/10 rounded-3xl p-6">
               <h4 className="font-semibold mb-4">Key Quotes</h4>
               <div className="space-y-2">
-                {podcastOutputs.keyQuotes.map((quote, i) => (
+                {podcastOutputs.keyQuotes.map((quote: any, i: number) => (
                   <div key={i} className="bg-zinc-950 p-4 rounded-2xl text-sm italic border-l-2 border-emerald-500 flex justify-between items-start">
                     <span>“{quote}”</span>
                     <button onClick={() => copyToClipboard(quote, 'Quote')} className="text-xs ml-4 text-zinc-400 hover:text-white">Copy</button>
@@ -399,7 +393,7 @@ export default function AudioProcessor({ user, onAmplifySuccess }: { user: User 
             <div className="bg-zinc-900 border border-white/10 rounded-3xl p-6">
               <h4 className="font-semibold mb-4">Chapters</h4>
               <div className="space-y-3">
-                {podcastOutputs.chapters.map((ch, i) => (
+                {podcastOutputs.chapters.map((ch: any, i: number) => (
                   <div key={i} className="flex gap-4 text-sm border-l-2 border-violet-500 pl-4">
                     <div className="font-mono text-violet-400 w-16 flex-shrink-0">{ch.time}</div>
                     <div>
@@ -421,7 +415,7 @@ export default function AudioProcessor({ user, onAmplifySuccess }: { user: User 
                 </button>
               </div>
               <div className="space-y-2 text-sm">
-                {podcastOutputs.clipIdeas.map((clip, i) => (
+                {podcastOutputs.clipIdeas.map((clip: any, i: number) => (
                   <div key={i} className="bg-zinc-950 p-3 rounded-2xl flex justify-between items-center">
                     <div>
                       <span className="font-mono text-emerald-400">{clip.start}s – {clip.end}s</span>
@@ -447,7 +441,7 @@ export default function AudioProcessor({ user, onAmplifySuccess }: { user: User 
                       </button>
                     </div>
                     <div className="text-sm text-zinc-300 whitespace-pre-wrap">
-                      {typeof content === 'string' ? content : 
+                      {typeof content === 'string' ? content :
                         Object.entries(content).map(([k, v]) => (
                           <div key={k} className="mb-1"><span className="text-zinc-400">{k}:</span> {String(v)}</div>
                         ))
