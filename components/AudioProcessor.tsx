@@ -441,8 +441,8 @@ export default function AudioProcessor({ user, onAmplifySuccess }: { user: User 
                       </button>
                     </div>
                     <div className="text-sm text-zinc-300 whitespace-pre-wrap">
-                      {typeof content === 'string' ? content :
-                        Object.entries(content).map(([k, v]) => (
+                      {typeof content === 'string' ? content : 
+                        Object.entries(content as Record<string, any>).map(([k, v]) => (
                           <div key={k} className="mb-1"><span className="text-zinc-400">{k}:</span> {String(v)}</div>
                         ))
                       }
